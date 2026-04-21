@@ -11,6 +11,8 @@
  * Error codes are shared across enums where the same error can occur in
  * multiple operations.  For example, PCACHE_INVALID_HANDLE is always 1
  * regardless of which operation returned it.
+ *
+ * Operation-specific errors use values starting at 1000.
  */
 
 /** Operation succeeded. */
@@ -28,8 +30,8 @@
 /** Outcome of ::pcache_create. */
 typedef enum pcache_create_error {
     PCACHE_CREATE_OK               = PCACHE_OK, /**< Operation succeeded. */
-    PCACHE_CREATE_INVALID_ARGUMENT = 4,         /**< A required pointer was NULL or a numeric parameter was zero. */
-    PCACHE_CREATE_FILE_EXISTS      = 5,         /**< At least one of the two volume files already exists. */
+    PCACHE_CREATE_INVALID_ARGUMENT = 1000,      /**< A required pointer was NULL or a numeric parameter was zero. */
+    PCACHE_CREATE_FILE_EXISTS      = 1001,      /**< At least one of the two volume files already exists. */
     PCACHE_CREATE_IO_ERROR         = PCACHE_IO_ERROR,     /**< A POSIX I/O call failed; inspect @p posix_error. */
     PCACHE_CREATE_SQLITE_ERROR     = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_create_error;
@@ -37,12 +39,12 @@ typedef enum pcache_create_error {
 /** Outcome of ::pcache_open. */
 typedef enum pcache_open_error {
     PCACHE_OPEN_OK           = PCACHE_OK,           /**< Operation succeeded. */
-    PCACHE_OPEN_NOT_FOUND    = 6,                   /**< At least one of the two volume files does not exist. */
+    PCACHE_OPEN_NOT_FOUND    = 1002,                /**< At least one of the two volume files does not exist. */
     PCACHE_OPEN_IO_ERROR     = PCACHE_IO_ERROR,     /**< A POSIX I/O call failed; inspect @p posix_error. */
     PCACHE_OPEN_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_OPEN_CORRUPT =
-        7, /**< The index database is missing required metadata or has an unsupported schema version. */
-    PCACHE_OPEN_TOO_MANY_HANDLES = 8, /**< The per-process handle table is full. */
+        1003, /**< The index database is missing required metadata or has an unsupported schema version. */
+    PCACHE_OPEN_TOO_MANY_HANDLES = 1004, /**< The per-process handle table is full. */
 } pcache_open_error;
 
 /** Outcome of ::pcache_close. */
@@ -64,9 +66,9 @@ typedef enum pcache_get_configuration_error {
 typedef enum pcache_put_page_error {
     PCACHE_PUT_PAGE_OK = PCACHE_OK, /**< Page was stored successfully. */
     PCACHE_PUT_PAGE_INVALID_HANDLE =
-        PCACHE_INVALID_HANDLE,              /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_PUT_PAGE_CAPACITY_EXCEEDED = 9,  /**< FIXED volume is full and has no free slots. */
-    PCACHE_PUT_PAGE_DUPLICATE_ID      = 10, /**< @p check_id_uniqueness was true and the identifier already exists. */
+        PCACHE_INVALID_HANDLE,                /**< The handle is zero or does not refer to an open volume. */
+    PCACHE_PUT_PAGE_CAPACITY_EXCEEDED = 1005, /**< FIXED volume is full and has no free slots. */
+    PCACHE_PUT_PAGE_DUPLICATE_ID      = 1006, /**< @p check_id_uniqueness was true and the identifier already exists. */
     PCACHE_PUT_PAGE_IO_ERROR     = PCACHE_IO_ERROR,     /**< Writing to the data file failed; inspect @p posix_error. */
     PCACHE_PUT_PAGE_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_put_page_error;
@@ -76,7 +78,7 @@ typedef enum pcache_get_page_error {
     PCACHE_GET_PAGE_OK = PCACHE_OK, /**< Page was retrieved successfully. */
     PCACHE_GET_PAGE_INVALID_HANDLE =
         PCACHE_INVALID_HANDLE,                      /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_GET_PAGE_NOT_FOUND    = 11,              /**< No page with the given identifier exists in the volume. */
+    PCACHE_GET_PAGE_NOT_FOUND    = 1007,            /**< No page with the given identifier exists in the volume. */
     PCACHE_GET_PAGE_IO_ERROR     = PCACHE_IO_ERROR, /**< Reading from the data file failed; inspect @p posix_error. */
     PCACHE_GET_PAGE_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_get_page_error;
@@ -93,8 +95,8 @@ typedef enum pcache_check_page_error {
 typedef enum pcache_delete_page_error {
     PCACHE_DELETE_PAGE_OK = PCACHE_OK, /**< Page was deleted successfully. */
     PCACHE_DELETE_PAGE_INVALID_HANDLE =
-        PCACHE_INVALID_HANDLE,         /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_DELETE_PAGE_NOT_FOUND = 11, /**< No page with the given identifier exists in the volume. */
+        PCACHE_INVALID_HANDLE,           /**< The handle is zero or does not refer to an open volume. */
+    PCACHE_DELETE_PAGE_NOT_FOUND = 1008, /**< No page with the given identifier exists in the volume. */
     PCACHE_DELETE_PAGE_IO_ERROR =
         PCACHE_IO_ERROR, /**< Writing zeros to the data file failed; inspect @p posix_error. */
     PCACHE_DELETE_PAGE_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
@@ -104,8 +106,8 @@ typedef enum pcache_delete_page_error {
 typedef enum pcache_defragment_error {
     PCACHE_DEFRAGMENT_OK = PCACHE_OK, /**< Defragmentation completed. */
     PCACHE_DEFRAGMENT_INVALID_HANDLE =
-        PCACHE_INVALID_HANDLE,           /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_DEFRAGMENT_CANCELLED    = 12, /**< The progress callback returned false; the volume remains consistent. */
+        PCACHE_INVALID_HANDLE,             /**< The handle is zero or does not refer to an open volume. */
+    PCACHE_DEFRAGMENT_CANCELLED    = 1009, /**< The progress callback returned false; the volume remains consistent. */
     PCACHE_DEFRAGMENT_IO_ERROR     = PCACHE_IO_ERROR,     /**< A data-file I/O call failed; inspect @p posix_error. */
     PCACHE_DEFRAGMENT_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_defragment_error;
@@ -115,7 +117,7 @@ typedef enum pcache_set_max_pages_error {
     PCACHE_SET_MAX_PAGES_OK = PCACHE_OK, /**< Capacity was updated. */
     PCACHE_SET_MAX_PAGES_INVALID_HANDLE =
         PCACHE_INVALID_HANDLE,                           /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES = 13,       /**< FIXED volume: reduction would discard live pages. */
+    PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES = 1010,     /**< FIXED volume: reduction would discard live pages. */
     PCACHE_SET_MAX_PAGES_IO_ERROR     = PCACHE_IO_ERROR, /**< A data-file I/O call failed; inspect @p posix_error. */
     PCACHE_SET_MAX_PAGES_SQLITE_ERROR = PCACHE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_set_max_pages_error;
