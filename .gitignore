@@ -55,3 +55,4 @@ resume.md
 .DS_Store
 build/
 .cache/
+doc/

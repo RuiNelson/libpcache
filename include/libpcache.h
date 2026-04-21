@@ -4,12 +4,8 @@
  * @file libpcache.h
  * @brief libpcache — persistent, paged, random-access storage indexed by key.
  *
- * A *volume* consists of two files:
- *  - A **data file** containing fixed-size pages laid out sequentially.
- *  - A **SQLite index database** mapping page identifiers to byte offsets.
- *
- * All public functions are thread-safe: a single handle may be shared across
- * threads without external locking.
+ * A *volume* consists of two files: a binary data file and a SQLite index.
+ * All public functions are thread-safe.
  *
  * @par Error reporting
  * Functions do not use their return value to signal errors.  Instead each
@@ -78,16 +74,15 @@ typedef bool (*pcache_progress_fn)(double progress, void *user_data);
 /**
  * @brief Create a new volume on the filesystem.
  *
- * Initialises the index database schema and populates the @c metadata table.
  * Fails immediately if either file already exists.
  *
  * @param paths                Paths to the database and data files.
  * @param config               Volume parameters (page size, capacity, …).
- * @param preallocate_database Insert @c max_pages rows with NULL identifiers
- *                             into the @c pages table, enabling O(1) slot
- *                             allocation on subsequent inserts.
- * @param preallocate_datafile Extend the data file to its maximum size,
- *                             writing zeros where necessary.
+ * @param preallocate_database If @c true, pre-allocate slots in the index for
+ *                              all @c max_pages pages, enabling O(1) allocation
+ *                              on subsequent inserts.
+ * @param preallocate_datafile If @c true, extend the data file to its maximum
+ *                              size immediately.
  * @param error                Receives the operation outcome; may be @c NULL.
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error          Receives @c errno on I/O failure; may be @c NULL.
@@ -105,14 +100,11 @@ void pcache_create(
 /**
  * @brief Open an existing volume.
  *
- * Reads the @c metadata table to reconstruct the configuration.  Returns a
- * positive descriptor on success, or zero on failure.
- *
  * @param paths             Paths to the database and data files.
- * @param preload_free_list If @c true, query all recyclable ROWIDs at open
- *                          time (O(n) startup cost, O(1) subsequent inserts).
- *                          If @c false, recyclable slots are located lazily.
- *                          Ignored on FIFO volumes.
+ * @param preload_free_list If @c true, load all recyclable slot identifiers at
+ *                          open time (higher startup cost, faster inserts).
+ *                          If @c false, slots are located lazily. Ignored on
+ *                          FIFO volumes.
  * @param error             Receives the operation outcome; may be @c NULL.
  * @param sqlite_error      Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error       Receives @c errno on I/O failure; may be @c NULL.
@@ -146,8 +138,7 @@ void pcache_close(
 /**
  * @brief Return the configuration of an open volume.
  *
- * The configuration is cached in memory after ::pcache_open and returned
- * directly without a database round-trip.
+ * The configuration is cached in memory after ::pcache_open.
  *
  * @param handle       Open volume descriptor.
  * @param error        Receives the operation outcome; may be @c NULL.
@@ -165,15 +156,15 @@ pcache_configuration pcache_get_configuration(
 /**
  * @brief Store a page identified by @p id.
  *
- * On FIFO volumes, a write that exceeds @c max_pages evicts the oldest page.
- * On FIXED volumes, such a write fails with ::PCACHE_PUT_PAGE_CAPACITY_EXCEEDED.
+ * On FIFO volumes, pages beyond @c max_pages are evicted automatically.
+ * On FIXED volumes, writes beyond capacity fail.
  *
  * @param handle              Open volume descriptor.
  * @param id                  Page identifier; must be exactly @c id_size bytes.
  * @param page_data           Page content; must be at least @c page_size bytes.
  * @param check_id_uniqueness If @c true, verify that no page with the same
  *                            identifier already exists before writing.
- * @param durable             If @c true, block until @c fsync completes.
+ * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error         Receives @c errno on I/O failure; may be @c NULL.
@@ -211,9 +202,6 @@ void pcache_get_page(
 /**
  * @brief Test whether a page identified by @p id exists in the volume.
  *
- * The check is performed entirely in the index database; the data file is not
- * accessed.
- *
  * @param handle       Open volume descriptor.
  * @param id           Page identifier; must be exactly @c id_size bytes.
  * @param error        Receives the operation outcome; may be @c NULL.
@@ -230,15 +218,10 @@ bool pcache_check_page(
 /**
  * @brief Delete the page identified by @p id from the volume.
  *
- * The index row is NULLed out; on FIXED volumes, the freed slot is added to
- * the in-memory free list.  On FIFO volumes, the slot is left in place and
- * will be naturally overwritten by the circular cursor.
- *
- * @param handle        Open volume descriptor.
- * @param id            Page identifier; must be exactly @c id_size bytes.
- * @param wipe_data_file If @c true, overwrite the corresponding region in the
- *                       data file with zeros after committing the index change.
- * @param durable        If @c true, block until @c fsync completes.
+ * @param handle         Open volume descriptor.
+ * @param id             Page identifier; must be exactly @c id_size bytes.
+ * @param wipe_data_file If @c true, overwrite the page data with zeros.
+ * @param durable        If @c true, block until data is durable on disk.
  * @param error          Receives the operation outcome; may be @c NULL.
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error    Receives @c errno on I/O failure; may be @c NULL.
@@ -258,20 +241,15 @@ void pcache_delete_page(
 /**
  * @brief Relocate live pages contiguously toward the start of the data file.
  *
- * Iterates live pages in ROWID order and moves each one to the lowest
- * available position, updating the index atomically per page.  The
- * @p progress_callback is invoked after each page and may cancel the
+ * The @p progress_callback is invoked after each page and may cancel the
  * operation by returning @c false; the volume remains consistent in all cases.
- *
- * After a complete (non-cancelled) run, all NULL rows are removed from the
- * @c pages table and the free list (FIXED) or cursor (FIFO) is reset.
  *
  * @param handle              Open volume descriptor.
  * @param progress_callback   Called after each page; @c NULL disables callbacks.
  * @param progress_user_data  Passed verbatim to @p progress_callback.
  * @param shrink_file         If @c true, truncate the data file to the minimum
  *                            size after relocation.
- * @param durable             If @c true, block until @c fsync completes.
+ * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error         Receives @c errno on I/O failure; may be @c NULL.
@@ -290,14 +268,13 @@ void pcache_defragment(
 /**
  * @brief Adjust the maximum capacity of the volume.
  *
- * Growth is always permitted.  Reduction on a FIXED volume fails if any live
- * page occupies a ROWID beyond @p new_max_pages (the caller should defragment
- * first).  Reduction on a FIFO volume silently evicts the oldest pages until
- * the live count fits within the new limit.
+ * Growth is always permitted.  On FIXED volumes, reduction fails if any live
+ * page would end up beyond the new limit (defragment first).  On FIFO volumes,
+ * the oldest pages are evicted silently to fit.
  *
  * @param handle        Open volume descriptor.
  * @param new_max_pages New maximum page count; must be ≥ 1.
- * @param durable       If @c true, block until @c fsync completes.
+ * @param durable       If @c true, block until data is durable on disk.
  * @param error         Receives the operation outcome; may be @c NULL.
  * @param sqlite_error  Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error   Receives @c errno on I/O failure; may be @c NULL.
@@ -314,14 +291,13 @@ void pcache_set_max_pages(
 /**
  * @brief Preallocate space in an already-open volume.
  *
- * @p preallocate_database inserts NULL rows into the @c pages table from the
- * current row count up to @c max_pages.  @p preallocate_datafile extends the
- * data file to @c max_pages × @c page_size bytes.
+ * @p preallocate_database reserves slots in the index; @p preallocate_datafile
+ * extends the data file to its maximum size.
  *
  * @param handle               Open volume descriptor.
  * @param preallocate_database Preallocate the index database.
  * @param preallocate_datafile Preallocate the data file.
- * @param durable              If @c true, block until @c fsync completes.
+ * @param durable              If @c true, block until data is durable on disk.
  * @param error                Receives the operation outcome; may be @c NULL.
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error          Receives @c errno on I/O failure; may be @c NULL.
