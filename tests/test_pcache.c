@@ -1,5 +1,5 @@
-#include "tst.h"
 #include "libpcache.h"
+#include "tst.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,15 +8,14 @@
 
 /* ──────────── Utilities ──────────── */
 
-#define TMP_DB   "/tmp/pcache_test.db"
-#define TMP_DATA "/tmp/pcache_test.dat"
+#define TMP_DB    "/tmp/pcache_test.db"
+#define TMP_DATA  "/tmp/pcache_test.dat"
 
-#define PAGE_SIZE  512u
-#define MAX_PAGES  8u
-#define ID_SIZE    16u
+#define PAGE_SIZE 512u
+#define MAX_PAGES 8u
+#define ID_SIZE   16u
 
-static void cleanup_files(void)
-{
+static void cleanup_files(void) {
     unlink(TMP_DB);
     unlink(TMP_DATA);
 }
@@ -30,27 +29,22 @@ static const pcache_configuration FIXED_CFG = {
     .id_size         = ID_SIZE,
 };
 
-
 /* Fill buf with a repeating pattern derived from seed. */
-static void fill_page(uint8_t *buf, uint8_t seed)
-{
+static void fill_page(uint8_t *buf, uint8_t seed) {
     for (uint32_t i = 0; i < PAGE_SIZE; i++)
         buf[i] = (uint8_t)(seed + i);
 }
 
 /* Fill id with a pattern derived from n. */
-static void make_id(uint8_t *id, uint8_t n)
-{
+static void make_id(uint8_t *id, uint8_t n) {
     memset(id, n, ID_SIZE);
 }
 
 /* ──────────── Test suite ──────────── */
 
-tstsuite("libpcache")
-{
+tstsuite("libpcache") {
     /* ── Create / open / close ── */
-    tstcase("create and open FIXED volume")
-    {
+    tstcase("create and open FIXED volume") {
         cleanup_files();
 
         pcache_create_error ce = PCACHE_CREATE_OK;
@@ -69,8 +63,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("create fails when files already exist")
-    {
+    tstcase("create fails when files already exist") {
         cleanup_files();
 
         pcache_create_error ce = PCACHE_CREATE_OK;
@@ -83,8 +76,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("get_configuration returns stored values")
-    {
+    tstcase("get_configuration returns stored values") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -104,8 +96,7 @@ tstsuite("libpcache")
     }
 
     /* ── put / get / check ── */
-    tstcase("put and get a page")
-    {
+    tstcase("put and get a page") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -128,8 +119,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("check_page returns correct presence")
-    {
+    tstcase("check_page returns correct presence") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -151,8 +141,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("get_page returns NOT_FOUND for missing id")
-    {
+    tstcase("get_page returns NOT_FOUND for missing id") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -169,8 +158,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("duplicate id check")
-    {
+    tstcase("duplicate id check") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -191,8 +179,7 @@ tstsuite("libpcache")
     }
 
     /* ── delete ── */
-    tstcase("delete page removes it from the index")
-    {
+    tstcase("delete page removes it from the index") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -217,8 +204,7 @@ tstsuite("libpcache")
         cleanup_files();
     }
 
-    tstcase("FIXED: deleted slot is reused")
-    {
+    tstcase("FIXED: deleted slot is reused") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -247,8 +233,7 @@ tstsuite("libpcache")
     }
 
     /* ── FIXED capacity ── */
-    tstcase("FIXED: capacity exceeded")
-    {
+    tstcase("FIXED: capacity exceeded") {
         cleanup_files();
 
         /* Use max_pages = 2 for a quick fill. */
@@ -279,8 +264,7 @@ tstsuite("libpcache")
     }
 
     /* ── FIFO eviction ── */
-    tstcase("FIFO: oldest page is evicted when full")
-    {
+    tstcase("FIFO: oldest page is evicted when full") {
         cleanup_files();
 
         const pcache_configuration fifo2 = {
@@ -315,8 +299,7 @@ tstsuite("libpcache")
     }
 
     /* ── Preallocate ── */
-    tstcase("preallocate database and data file")
-    {
+    tstcase("preallocate database and data file") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -341,8 +324,7 @@ tstsuite("libpcache")
     }
 
     /* ── Defragment ── */
-    tstcase("defragment compacts pages")
-    {
+    tstcase("defragment compacts pages") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -381,8 +363,7 @@ tstsuite("libpcache")
     }
 
     /* ── Persistence across close/open ── */
-    tstcase("data persists across close and reopen")
-    {
+    tstcase("data persists across close and reopen") {
         cleanup_files();
 
         pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
@@ -396,7 +377,7 @@ tstsuite("libpcache")
 
         /* Reopen and verify. */
         h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
-        uint8_t page_in[PAGE_SIZE];
+        uint8_t               page_in[PAGE_SIZE];
         pcache_get_page_error ge = PCACHE_GET_PAGE_OK;
         pcache_get_page(h, id, page_in, &ge, NULL, NULL);
         tstcheck(ge == PCACHE_GET_PAGE_OK, "page must be found after reopen");
@@ -407,8 +388,7 @@ tstsuite("libpcache")
     }
 
     /* ── set_max_pages ── */
-    tstcase("set_max_pages grows the volume")
-    {
+    tstcase("set_max_pages grows the volume") {
         cleanup_files();
 
         const pcache_configuration small_cfg = {
