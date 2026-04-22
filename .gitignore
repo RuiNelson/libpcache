@@ -55,3 +55,7 @@ resume.md
 build/
 .cache/
 doc/
+
+.claude/
+.agents/
+
