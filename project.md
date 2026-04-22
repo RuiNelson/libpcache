@@ -234,6 +234,24 @@ void pcache_put_page(
 );
 ```
 
+**`pcache_put_pages`.** Stores multiple pages in a single call. The `ids` buffer must contain `count * id_size` bytes laid out contiguously; the `pages_data` buffer must contain `count * page_size` bytes. The operation is atomic: either all pages are written successfully, or none are. On volumes with FIFO policy, inserts that exceed the capacity trigger eviction of the oldest pages as needed.
+
+When `check_id_uniqueness` is `true`, the library verifies that none of the supplied identifiers already exist in the volume before proceeding; if any duplicate is found, the operation fails with a dedicated error code and no pages are written. When `false`, no such check is performed and the caller assumes responsibility for identifier uniqueness across all supplied pages.
+
+```c
+void pcache_put_pages(
+    pcache_handle            handle,
+    size_t                   count,
+    const void              *ids,
+    const void              *pages_data,
+    bool                     check_id_uniqueness,
+    bool                     durable,
+    pcache_put_pages_error  *error,
+    int                     *sqlite_error,
+    int                     *posix_error
+);
+```
+
 **`pcache_get_page`.** Retrieves the page associated with the supplied `id`, copying its contents into the buffer provided by the caller, which must have at least `page_size` bytes available.
 
 ```c
@@ -244,6 +262,20 @@ void pcache_get_page(
     pcache_get_page_error  *error,
     int                    *sqlite_error,
     int                    *posix_error
+);
+```
+
+**`pcache_get_pages`.** Retrieves multiple pages in a single call. The `ids` buffer must contain `count * id_size` bytes laid out contiguously; the `pages_buffer` must have at least `count * page_size` bytes available. The operation is atomic: if any of the requested pages does not exist, the operation fails and the buffer contents are unspecified.
+
+```c
+void pcache_get_pages(
+    pcache_handle            handle,
+    size_t                   count,
+    const void              *ids,
+    void                    *pages_buffer,
+    pcache_get_pages_error  *error,
+    int                     *sqlite_error,
+    int                     *posix_error
 );
 ```
 

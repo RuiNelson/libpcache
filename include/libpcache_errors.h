@@ -40,6 +40,9 @@
 #define PCACHE_CODE_DELETE_PAGE_NOT_FOUND             1008
 #define PCACHE_CODE_DEFRAGMENT_CANCELLED              1009
 #define PCACHE_CODE_SET_MAX_PAGES_WOULD_DISCARD_PAGES 1010
+#define PCACHE_CODE_PUT_PAGES_CAPACITY_EXCEEDED       1011
+#define PCACHE_CODE_PUT_PAGES_DUPLICATE_ID            1012
+#define PCACHE_CODE_GET_PAGES_NOT_FOUND               1013
 
 /** Outcome of ::pcache_create. */
 
@@ -96,6 +99,19 @@ typedef enum pcache_put_page_error {
     PCACHE_PUT_PAGE_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_put_page_error;
 
+/** Outcome of ::pcache_put_pages. */
+typedef enum pcache_put_pages_error {
+    PCACHE_PUT_PAGES_OK = PCACHE_CODE_OK, /**< All pages were stored successfully. */
+    PCACHE_PUT_PAGES_INVALID_HANDLE =
+        PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
+    PCACHE_PUT_PAGES_CAPACITY_EXCEEDED =
+        PCACHE_CODE_PUT_PAGES_CAPACITY_EXCEEDED, /**< FIXED volume is full and has no free slots. */
+    PCACHE_PUT_PAGES_DUPLICATE_ID =
+        PCACHE_CODE_PUT_PAGES_DUPLICATE_ID, /**< @p check_id_uniqueness was true and an identifier already exists. */
+    PCACHE_PUT_PAGES_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< Writing to the data file failed; inspect @p posix_error. */
+    PCACHE_PUT_PAGES_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
+} pcache_put_pages_error;
+
 /** Outcome of ::pcache_get_page. */
 typedef enum pcache_get_page_error {
     PCACHE_GET_PAGE_OK = PCACHE_CODE_OK, /**< Page was retrieved successfully. */
@@ -106,6 +122,17 @@ typedef enum pcache_get_page_error {
     PCACHE_GET_PAGE_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< Reading from the data file failed; inspect @p posix_error. */
     PCACHE_GET_PAGE_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_get_page_error;
+
+/** Outcome of ::pcache_get_pages. */
+typedef enum pcache_get_pages_error {
+    PCACHE_GET_PAGES_OK = PCACHE_CODE_OK, /**< All pages were retrieved successfully. */
+    PCACHE_GET_PAGES_INVALID_HANDLE =
+        PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
+    PCACHE_GET_PAGES_NOT_FOUND =
+        PCACHE_CODE_GET_PAGES_NOT_FOUND,              /**< At least one of the requested pages does not exist. */
+    PCACHE_GET_PAGES_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< Reading from the data file failed; inspect @p posix_error. */
+    PCACHE_GET_PAGES_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
+} pcache_get_pages_error;
 
 /** Outcome of ::pcache_check_page. */
 typedef enum pcache_check_page_error {

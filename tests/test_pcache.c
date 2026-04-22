@@ -1241,4 +1241,236 @@ tstsuite("libpcache") {
         pcache_close(h, NULL, NULL, NULL);
         cleanup_files();
     }
+
+    /* ── Batch operations ── */
+    tstcase("put_pages and get_pages basic") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t ids[3 * ID_SIZE];
+        uint8_t pages_out[3 * PAGE_SIZE];
+        uint8_t pages_in[3 * PAGE_SIZE];
+
+        for (uint8_t i = 0; i < 3; i++) {
+            make_id(ids + i * ID_SIZE, i + 1);
+            fill_page(pages_out + i * PAGE_SIZE, i + 1);
+        }
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 3, ids, pages_out, false, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_OK, "put_pages must succeed");
+
+        pcache_get_pages_error ge = PCACHE_GET_PAGES_OK;
+        pcache_get_pages(h, 3, ids, pages_in, &ge, NULL, NULL);
+        tstcheck(ge == PCACHE_GET_PAGES_OK, "get_pages must succeed");
+        tstcheck(memcmp(pages_in, pages_out, 3 * PAGE_SIZE) == 0, "retrieved data must match");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages with count=0 succeeds") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 0, NULL, NULL, false, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_OK, "put_pages with count=0 must succeed");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("get_pages with count=0 succeeds") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        pcache_get_pages_error ge = PCACHE_GET_PAGES_OK;
+        pcache_get_pages(h, 0, NULL, NULL, &ge, NULL, NULL);
+        tstcheck(ge == PCACHE_GET_PAGES_OK, "get_pages with count=0 must succeed");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("get_pages returns NOT_FOUND if any page missing") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t ids[3 * ID_SIZE];
+        uint8_t pages_out[3 * PAGE_SIZE];
+        uint8_t pages_in[3 * PAGE_SIZE];
+
+        for (uint8_t i = 0; i < 3; i++) {
+            make_id(ids + i * ID_SIZE, i + 1);
+            fill_page(pages_out + i * PAGE_SIZE, i + 1);
+        }
+
+        pcache_put_pages(h, 2, ids, pages_out, false, false, NULL, NULL, NULL);
+
+        pcache_get_pages_error ge = PCACHE_GET_PAGES_OK;
+        pcache_get_pages(h, 3, ids, pages_in, &ge, NULL, NULL);
+        tstcheck(ge == PCACHE_GET_PAGES_NOT_FOUND, "get_pages must return NOT_FOUND when a page is missing");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages with duplicate id detection") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t ids[3 * ID_SIZE];
+        uint8_t pages[3 * PAGE_SIZE];
+
+        for (uint8_t i = 0; i < 3; i++) {
+            make_id(ids + i * ID_SIZE, 1);
+            fill_page(pages + i * PAGE_SIZE, i);
+        }
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 3, ids, pages, true, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_DUPLICATE_ID, "duplicate ids within batch must be detected");
+
+        tstcheck(db_page_count() == 0, "no pages must be stored on duplicate error");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages detects duplicate against existing page") {
+        cleanup_files();
+
+        pcache_create(&TEST_PATHS, &FIXED_CFG, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t id[ID_SIZE];
+        uint8_t page[PAGE_SIZE];
+        make_id(id, 42);
+        fill_page(page, 42);
+        pcache_put_page(h, id, page, false, false, NULL, NULL, NULL);
+
+        uint8_t ids[2 * ID_SIZE];
+        uint8_t pages[2 * PAGE_SIZE];
+        make_id(ids + 0 * ID_SIZE, 1);
+        make_id(ids + 1 * ID_SIZE, 42);
+        fill_page(pages + 0 * PAGE_SIZE, 1);
+        fill_page(pages + 1 * PAGE_SIZE, 2);
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 2, ids, pages, true, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_DUPLICATE_ID, "duplicate against existing page must be detected");
+
+        tstcheck(db_page_count() == 1, "only the original page must exist");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages on FIXED volume with capacity exceeded") {
+        cleanup_files();
+
+        const pcache_configuration small_cfg = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = 2,
+            .id_size         = ID_SIZE,
+        };
+        pcache_create(&TEST_PATHS, &small_cfg, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t ids[3 * ID_SIZE];
+        uint8_t pages[3 * PAGE_SIZE];
+        for (uint8_t i = 0; i < 3; i++) {
+            make_id(ids + i * ID_SIZE, i + 1);
+            fill_page(pages + i * PAGE_SIZE, i + 1);
+        }
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 3, ids, pages, false, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_CAPACITY_EXCEEDED, "FIXED put_pages beyond capacity must fail");
+
+        tstcheck(db_page_count() == 0, "no pages must be stored on capacity error");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages on FIFO volume evicts oldest") {
+        cleanup_files();
+
+        const pcache_configuration fifo_cfg = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = 3,
+            .id_size         = ID_SIZE,
+        };
+        pcache_create(&TEST_PATHS, &fifo_cfg, false, false, NULL, NULL, NULL);
+        pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
+
+        uint8_t ids[3 * ID_SIZE];
+        uint8_t pages[3 * PAGE_SIZE];
+        for (uint8_t i = 0; i < 3; i++) {
+            make_id(ids + i * ID_SIZE, i + 1);
+            fill_page(pages + i * PAGE_SIZE, i + 1);
+        }
+
+        pcache_put_pages(h, 3, ids, pages, false, false, NULL, NULL, NULL);
+        tstcheck(db_page_count() == 3, "first batch must fill volume");
+
+        uint8_t new_ids[2 * ID_SIZE];
+        uint8_t new_pages[2 * PAGE_SIZE];
+        make_id(new_ids + 0 * ID_SIZE, 10);
+        make_id(new_ids + 1 * ID_SIZE, 11);
+        fill_page(new_pages + 0 * PAGE_SIZE, 10);
+        fill_page(new_pages + 1 * PAGE_SIZE, 11);
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(h, 2, new_ids, new_pages, false, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_OK, "FIFO put_pages must succeed with eviction");
+        tstcheck(db_page_count() == 3, "page count must remain at max");
+
+        pcache_check_page_error ce = PCACHE_CHECK_PAGE_OK;
+        tstcheck(pcache_check_page(h, ids + 0 * ID_SIZE, &ce, NULL) == false, "id 1 must be evicted");
+        tstcheck(pcache_check_page(h, ids + 1 * ID_SIZE, &ce, NULL) == false, "id 2 must be evicted");
+        tstcheck(pcache_check_page(h, ids + 2 * ID_SIZE, &ce, NULL) == true, "id 3 must remain");
+
+        pcache_close(h, NULL, NULL, NULL);
+        cleanup_files();
+    }
+
+    tstcase("put_pages with invalid handle") {
+        cleanup_files();
+
+        uint8_t ids[ID_SIZE];
+        uint8_t pages[PAGE_SIZE];
+        make_id(ids, 1);
+        fill_page(pages, 1);
+
+        pcache_put_pages_error pe = PCACHE_PUT_PAGES_OK;
+        pcache_put_pages(0, 1, ids, pages, false, false, &pe, NULL, NULL);
+        tstcheck(pe == PCACHE_PUT_PAGES_INVALID_HANDLE, "must report INVALID_HANDLE");
+    }
+
+    tstcase("get_pages with invalid handle") {
+        cleanup_files();
+
+        uint8_t ids[ID_SIZE];
+        uint8_t pages[PAGE_SIZE];
+        make_id(ids, 1);
+
+        pcache_get_pages_error ge = PCACHE_GET_PAGES_OK;
+        pcache_get_pages(0, 1, ids, pages, &ge, NULL, NULL);
+        tstcheck(ge == PCACHE_GET_PAGES_INVALID_HANDLE, "must report INVALID_HANDLE");
+    }
 }

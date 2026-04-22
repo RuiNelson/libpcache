@@ -16,6 +16,7 @@
  */
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "libpcache_errors.h"
@@ -167,6 +168,34 @@ void pcache_put_page(pcache_handle          handle,
                      int                   *posix_error);
 
 /**
+ * @brief Store multiple pages in a single atomic operation.
+ *
+ * The operation is atomic: either all pages are written, or none are.
+ * On FIFO volumes, pages beyond @c max_pages are evicted automatically.
+ * On FIXED volumes, writes beyond capacity fail.
+ *
+ * @param handle              Open volume descriptor.
+ * @param count               Number of pages to store.
+ * @param ids                 Page identifiers; must be @c count * id_size bytes.
+ * @param pages_data          Page contents; must be @c count * page_size bytes.
+ * @param check_id_uniqueness If @c true, verify that none of the identifiers
+ *                            already exist before writing.
+ * @param durable             If @c true, block until data is durable on disk.
+ * @param error               Receives the operation outcome; may be @c NULL.
+ * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
+ * @param posix_error         Receives @c errno on I/O failure; may be @c NULL.
+ */
+void pcache_put_pages(pcache_handle           handle,
+                      size_t                  count,
+                      const void             *ids,
+                      const void             *pages_data,
+                      bool                    check_id_uniqueness,
+                      bool                    durable,
+                      pcache_put_pages_error *error,
+                      int                    *sqlite_error,
+                      int                    *posix_error);
+
+/**
  * @brief Retrieve the page identified by @p id.
  *
  * @param handle       Open volume descriptor.
@@ -182,6 +211,28 @@ void pcache_get_page(pcache_handle          handle,
                      pcache_get_page_error *error,
                      int                   *sqlite_error,
                      int                   *posix_error);
+
+/**
+ * @brief Retrieve multiple pages in a single atomic operation.
+ *
+ * The operation is atomic: if any page is not found, no data is written
+ * to the buffer. On failure, the buffer contents are unspecified.
+ *
+ * @param handle       Open volume descriptor.
+ * @param count        Number of pages to retrieve.
+ * @param ids          Page identifiers; must be @c count * id_size bytes.
+ * @param pages_buffer Destination buffer; must be @c count * page_size bytes.
+ * @param error        Receives the operation outcome; may be @c NULL.
+ * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
+ * @param posix_error  Receives @c errno on I/O failure; may be @c NULL.
+ */
+void pcache_get_pages(pcache_handle           handle,
+                      size_t                  count,
+                      const void             *ids,
+                      void                   *pages_buffer,
+                      pcache_get_pages_error *error,
+                      int                    *sqlite_error,
+                      int                    *posix_error);
 
 /**
  * @brief Test whether a page identified by @p id exists in the volume.
