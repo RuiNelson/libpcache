@@ -24,8 +24,6 @@ void pcache_defragment(pcache_handle            handle,
         return;
     }
 
-    pthread_mutex_lock(&v->mutex);
-
     /* ── Load live ROWIDs into memory ── */
     int64_t *rowids          = NULL;
     uint32_t live_cnt        = 0;
@@ -206,8 +204,6 @@ void pcache_set_max_pages(pcache_handle               handle,
         return;
     }
 
-    pthread_mutex_lock(&v->mutex);
-
     uint32_t old_max = v->config.max_pages;
     if (new_max_pages == old_max)
         goto unlock;
@@ -289,6 +285,37 @@ void pcache_set_max_pages(pcache_handle               handle,
                         break; /* safety guard: full circle */
                 }
             }
+
+            /* Delete all rows (including live ones) beyond the new limit, and
+             * clamp the FIFO cursor to remain within the new boundary. */
+            {
+                sqlite3_stmt *ds;
+                int           rc = sqlite3_prepare_v2(v->db, "DELETE FROM pages WHERE rowid > ?", -1, &ds, NULL);
+                if (rc == SQLITE_OK) {
+                    sqlite3_bind_int64(ds, 1, (int64_t)new_max_pages);
+                    sqlite3_step(ds);
+                    sqlite3_finalize(ds);
+                }
+            }
+
+            int64_t new_fifo = v->fifo_next;
+            if (new_fifo > (int64_t)new_max_pages)
+                new_fifo = (new_fifo % (int64_t)new_max_pages) + 1;
+            v->fifo_next = new_fifo;
+
+            /* Persist the updated cursor. */
+            {
+                sqlite3_stmt *cs;
+                int           rc = sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &cs, NULL);
+                if (rc == SQLITE_OK) {
+                    sqlite3_bind_int64(cs, 1, new_fifo);
+                    sqlite3_step(cs);
+                    sqlite3_finalize(cs);
+                }
+            }
+
+            if (v->row_count > new_max_pages)
+                v->row_count = new_max_pages;
         }
     }
 
@@ -338,8 +365,6 @@ void pcache_preallocate(pcache_handle             handle,
         SET_ERR(error, PCACHE_PREALLOCATE_INVALID_HANDLE);
         return;
     }
-
-    pthread_mutex_lock(&v->mutex);
 
     uint32_t max   = v->config.max_pages;
     uint32_t start = v->row_count + 1; /* first ROWID not yet in the table */

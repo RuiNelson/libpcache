@@ -26,8 +26,6 @@ void pcache_put_page(pcache_handle          handle,
         return;
     }
 
-    pthread_mutex_lock(&v->mutex);
-
     /* ── Uniqueness check ── */
     if (check_id_uniqueness) {
         int     sq  = SQLITE_OK;
@@ -113,8 +111,8 @@ void pcache_put_page(pcache_handle          handle,
         }
     }
 
-    /* Advance the FIFO cursor atomically within the same transaction. */
-    if (rc == SQLITE_OK && v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
+    /* Advance the FIFO cursor only on replacement (not on initial insert). */
+    if (rc == SQLITE_OK && v->config.capacity_policy == PCACHE_CAPACITY_FIFO && !do_insert) {
         /* Spec: update to (next_rowid % max_pages) + 1 based on fifo_next, not target_rowid */
         int64_t new_next = (v->fifo_next % (int64_t)v->config.max_pages) + 1;
         rc               = sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &s, NULL);
@@ -160,9 +158,11 @@ void pcache_put_page(pcache_handle          handle,
     if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO && !do_insert)
         v->fifo_next = (target_rowid % (int64_t)v->config.max_pages) + 1;
 
-    if (durable && !do_sync(v)) {
-        SET_ERR(posix_error, errno);
-        SET_ERR(error, PCACHE_PUT_PAGE_IO_ERROR);
+    if (durable && error && *error == PCACHE_PUT_PAGE_OK) {
+        if (!do_sync(v)) {
+            SET_ERR(posix_error, errno);
+            SET_ERR(error, PCACHE_PUT_PAGE_IO_ERROR);
+        }
     }
 
 unlock:
@@ -184,8 +184,6 @@ void pcache_get_page(pcache_handle          handle,
         SET_ERR(error, PCACHE_GET_PAGE_INVALID_HANDLE);
         return;
     }
-
-    pthread_mutex_lock(&v->mutex);
 
     int     sq    = SQLITE_OK;
     int64_t rowid = find_rowid(v, id, &sq);
@@ -222,8 +220,6 @@ bool pcache_check_page(pcache_handle handle, const void *id, pcache_check_page_e
         return false;
     }
 
-    pthread_mutex_lock(&v->mutex);
-
     int     sq    = SQLITE_OK;
     int64_t rowid = find_rowid(v, id, &sq);
     bool    found = rowid > 0;
@@ -254,8 +250,6 @@ void pcache_delete_page(pcache_handle             handle,
         SET_ERR(error, PCACHE_DELETE_PAGE_INVALID_HANDLE);
         return;
     }
-
-    pthread_mutex_lock(&v->mutex);
 
     int     sq    = SQLITE_OK;
     int64_t rowid = find_rowid(v, id, &sq);

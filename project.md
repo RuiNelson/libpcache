@@ -87,7 +87,7 @@ A single partial index is defined over the `pages` table:
 CREATE INDEX idx_lookup ON pages(id_hash) WHERE id_hash IS NOT NULL;
 ```
 
-By excluding rows where `id_hash IS NOT NULL`, the index contains only live pages and remains compact regardless of how many recyclings have accumulated over the volume's lifetime. The `id` column is not indexed: the `id_hash` pre-filter is sufficient.
+By excluding rows where `id_hash IS NULL`, the index contains only live pages and remains compact regardless of how many recyclings have accumulated over the volume's lifetime. The `id` column is not indexed: the `id_hash` pre-filter is sufficient.
 
 #### Row Recycling
 
@@ -289,7 +289,7 @@ void pcache_defragment(
 );
 ```
 
-**`pcache_set_max_pages`.** Adjusts the volume's maximum capacity, either by growth or by reduction. On `FIXED` volumes, the operation fails if the requested reduction would require discarding live pages; on `FIFO` volumes, the reduction silently discards the oldest pages until the new limit is reached.
+**`pcache_set_max_pages`.** Adjusts the volume's maximum capacity, either by growth or by reduction. On `FIXED` volumes, the operation fails if the requested reduction would require discarding live pages; on `FIFO` volumes, the reduction silently discards the oldest pages until the new limit is reached, which may involve evicting some pages that are younger than others when the cursor does not align with the oldest live page.
 
 ```c
 void pcache_set_max_pages(

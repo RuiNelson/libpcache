@@ -87,15 +87,13 @@ typedef bool (*pcache_progress_fn)(double progress, void *user_data);
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error          Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_create(
-    const pcache_file_pair     *paths,
-    const pcache_configuration *config,
-    bool                        preallocate_database,
-    bool                        preallocate_datafile,
-    pcache_create_error        *error,
-    int                        *sqlite_error,
-    int                        *posix_error
-);
+void pcache_create(const pcache_file_pair     *paths,
+                   const pcache_configuration *config,
+                   bool                        preallocate_database,
+                   bool                        preallocate_datafile,
+                   pcache_create_error        *error,
+                   int                        *sqlite_error,
+                   int                        *posix_error);
 
 /**
  * @brief Open an existing volume.
@@ -110,13 +108,11 @@ void pcache_create(
  * @param posix_error       Receives @c errno on I/O failure; may be @c NULL.
  * @return Positive descriptor on success, or zero on failure.
  */
-pcache_handle pcache_open(
-    const pcache_file_pair *paths,
-    bool                    preload_free_list,
-    pcache_open_error      *error,
-    int                    *sqlite_error,
-    int                    *posix_error
-);
+pcache_handle pcache_open(const pcache_file_pair *paths,
+                          bool                    preload_free_list,
+                          pcache_open_error      *error,
+                          int                    *sqlite_error,
+                          int                    *posix_error);
 
 /**
  * @brief Close an open volume and release all associated resources.
@@ -126,12 +122,7 @@ pcache_handle pcache_open(
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error  Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_close(
-    pcache_handle       handle,
-    pcache_close_error *error,
-    int                *sqlite_error,
-    int                *posix_error
-);
+void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *posix_error);
 
 /* ──────────── Introspection ──────────── */
 
@@ -145,11 +136,8 @@ void pcache_close(
  * @param sqlite_error Unused; reserved for future use. May be @c NULL.
  * @return The volume configuration, or an unspecified value on error.
  */
-pcache_configuration pcache_get_configuration(
-    pcache_handle                   handle,
-    pcache_get_configuration_error *error,
-    int                            *sqlite_error
-);
+pcache_configuration
+pcache_get_configuration(pcache_handle handle, pcache_get_configuration_error *error, int *sqlite_error);
 
 /* ──────────── Page operations ──────────── */
 
@@ -169,16 +157,14 @@ pcache_configuration pcache_get_configuration(
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error         Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_put_page(
-    pcache_handle          handle,
-    const void            *id,
-    const void            *page_data,
-    bool                   check_id_uniqueness,
-    bool                   durable,
-    pcache_put_page_error *error,
-    int                   *sqlite_error,
-    int                   *posix_error
-);
+void pcache_put_page(pcache_handle          handle,
+                     const void            *id,
+                     const void            *page_data,
+                     bool                   check_id_uniqueness,
+                     bool                   durable,
+                     pcache_put_page_error *error,
+                     int                   *sqlite_error,
+                     int                   *posix_error);
 
 /**
  * @brief Retrieve the page identified by @p id.
@@ -190,14 +176,12 @@ void pcache_put_page(
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error  Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_get_page(
-    pcache_handle          handle,
-    const void            *id,
-    void                  *page_buffer,
-    pcache_get_page_error *error,
-    int                   *sqlite_error,
-    int                   *posix_error
-);
+void pcache_get_page(pcache_handle          handle,
+                     const void            *id,
+                     void                  *page_buffer,
+                     pcache_get_page_error *error,
+                     int                   *sqlite_error,
+                     int                   *posix_error);
 
 /**
  * @brief Test whether a page identified by @p id exists in the volume.
@@ -208,12 +192,7 @@ void pcache_get_page(
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
  * @return @c true if the page exists, @c false otherwise (or on error).
  */
-bool pcache_check_page(
-    pcache_handle            handle,
-    const void              *id,
-    pcache_check_page_error *error,
-    int                     *sqlite_error
-);
+bool pcache_check_page(pcache_handle handle, const void *id, pcache_check_page_error *error, int *sqlite_error);
 
 /**
  * @brief Delete the page identified by @p id from the volume.
@@ -226,15 +205,13 @@ bool pcache_check_page(
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error    Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_delete_page(
-    pcache_handle             handle,
-    const void               *id,
-    bool                      wipe_data_file,
-    bool                      durable,
-    pcache_delete_page_error *error,
-    int                      *sqlite_error,
-    int                      *posix_error
-);
+void pcache_delete_page(pcache_handle             handle,
+                        const void               *id,
+                        bool                      wipe_data_file,
+                        bool                      durable,
+                        pcache_delete_page_error *error,
+                        int                      *sqlite_error,
+                        int                      *posix_error);
 
 /* ──────────── Maintenance ──────────── */
 
@@ -254,16 +231,14 @@ void pcache_delete_page(
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error         Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_defragment(
-    pcache_handle            handle,
-    pcache_progress_fn       progress_callback,
-    void                    *progress_user_data,
-    bool                     shrink_file,
-    bool                     durable,
-    pcache_defragment_error *error,
-    int                     *sqlite_error,
-    int                     *posix_error
-);
+void pcache_defragment(pcache_handle            handle,
+                       pcache_progress_fn       progress_callback,
+                       void                    *progress_user_data,
+                       bool                     shrink_file,
+                       bool                     durable,
+                       pcache_defragment_error *error,
+                       int                     *sqlite_error,
+                       int                     *posix_error);
 
 /**
  * @brief Adjust the maximum capacity of the volume.
@@ -279,14 +254,12 @@ void pcache_defragment(
  * @param sqlite_error  Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error   Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_set_max_pages(
-    pcache_handle               handle,
-    uint32_t                    new_max_pages,
-    bool                        durable,
-    pcache_set_max_pages_error *error,
-    int                        *sqlite_error,
-    int                        *posix_error
-);
+void pcache_set_max_pages(pcache_handle               handle,
+                          uint32_t                    new_max_pages,
+                          bool                        durable,
+                          pcache_set_max_pages_error *error,
+                          int                        *sqlite_error,
+                          int                        *posix_error);
 
 /**
  * @brief Preallocate space in an already-open volume.
@@ -302,12 +275,10 @@ void pcache_set_max_pages(
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
  * @param posix_error          Receives @c errno on I/O failure; may be @c NULL.
  */
-void pcache_preallocate(
-    pcache_handle            handle,
-    bool                     preallocate_database,
-    bool                     preallocate_datafile,
-    bool                     durable,
-    pcache_preallocate_error *error,
-    int                      *sqlite_error,
-    int                      *posix_error
-);
+void pcache_preallocate(pcache_handle             handle,
+                        bool                      preallocate_database,
+                        bool                      preallocate_datafile,
+                        bool                      durable,
+                        pcache_preallocate_error *error,
+                        int                      *sqlite_error,
+                        int                      *posix_error);

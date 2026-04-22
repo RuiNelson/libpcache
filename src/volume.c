@@ -24,15 +24,25 @@ void pcache_create(const pcache_file_pair     *paths,
         return;
     }
 
-    if (access(paths->database_path, F_OK) == 0 || access(paths->data_path, F_OK) == 0) {
-        SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
+    int db_fd = open(paths->database_path, O_RDWR | O_CREAT | O_EXCL, 0644);
+    if (db_fd < 0) {
+        SET_ERR(posix_error, errno);
+        if (errno == EEXIST)
+            SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
+        else
+            SET_ERR(error, PCACHE_CREATE_IO_ERROR);
         return;
     }
 
     int data_fd = open(paths->data_path, O_RDWR | O_CREAT | O_EXCL, 0644);
     if (data_fd < 0) {
         SET_ERR(posix_error, errno);
-        SET_ERR(error, PCACHE_CREATE_IO_ERROR);
+        if (errno == EEXIST)
+            SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
+        else
+            SET_ERR(error, PCACHE_CREATE_IO_ERROR);
+        close(db_fd);
+        unlink(paths->database_path);
         return;
     }
 
@@ -43,6 +53,7 @@ void pcache_create(const pcache_file_pair     *paths,
         SET_ERR(error, PCACHE_CREATE_SQLITE_ERROR);
         close(data_fd);
         unlink(paths->data_path);
+        close(db_fd);
         sqlite3_close(db);
         return;
     }
@@ -124,6 +135,7 @@ void pcache_create(const pcache_file_pair     *paths,
 fail:
     sqlite3_close(db);
     close(data_fd);
+    close(db_fd);
     unlink(paths->data_path);
     unlink(paths->database_path);
 }
@@ -257,7 +269,10 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
         return;
     }
 
-    pthread_mutex_lock(&v->mutex);
+    /* Flip in_use while still holding v->mutex, so that any concurrent
+     * vol_from_handle (which takes v->mutex first, then reads in_use) will
+     * observe the close and return NULL. */
+    release_slot(v);
 
     if (v->db) {
         int rc = sqlite3_close(v->db);
@@ -280,7 +295,6 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
     rv_free(&v->free_list);
 
     pthread_mutex_unlock(&v->mutex);
-    release_slot(v);
 }
 
 pcache_configuration
@@ -295,7 +309,6 @@ pcache_get_configuration(pcache_handle handle, pcache_get_configuration_error *e
         return cfg;
     }
 
-    pthread_mutex_lock(&v->mutex);
     cfg = v->config;
     pthread_mutex_unlock(&v->mutex);
     return cfg;

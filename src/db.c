@@ -4,19 +4,16 @@
 
 #include <xxhash.h>
 
-int db_exec(sqlite3 *db, const char *sql)
-{
+int db_exec(sqlite3 *db, const char *sql) {
     return sqlite3_exec(db, sql, NULL, NULL, NULL);
 }
 
-void db_configure(sqlite3 *db)
-{
+void db_configure(sqlite3 *db) {
     db_exec(db, "PRAGMA journal_mode=WAL");
     sqlite3_busy_timeout(db, 5000);
 }
 
-bool db_meta_write_u32(sqlite3 *db, const char *key, uint32_t val)
-{
+bool db_meta_write_u32(sqlite3 *db, const char *key, uint32_t val) {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db, "INSERT INTO metadata(key,value) VALUES(?,?)", -1, &s, NULL) != SQLITE_OK)
         return false;
@@ -28,8 +25,7 @@ bool db_meta_write_u32(sqlite3 *db, const char *key, uint32_t val)
     return rc == SQLITE_DONE;
 }
 
-bool db_meta_write_str(sqlite3 *db, const char *key, const char *val)
-{
+bool db_meta_write_str(sqlite3 *db, const char *key, const char *val) {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db, "INSERT INTO metadata(key,value) VALUES(?,?)", -1, &s, NULL) != SQLITE_OK)
         return false;
@@ -40,8 +36,7 @@ bool db_meta_write_str(sqlite3 *db, const char *key, const char *val)
     return rc == SQLITE_DONE;
 }
 
-bool db_meta_read_u32(sqlite3 *db, const char *key, uint32_t *out)
-{
+bool db_meta_read_u32(sqlite3 *db, const char *key, uint32_t *out) {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db, "SELECT value FROM metadata WHERE key=?", -1, &s, NULL) != SQLITE_OK)
         return false;
@@ -58,8 +53,7 @@ bool db_meta_read_u32(sqlite3 *db, const char *key, uint32_t *out)
     return ok;
 }
 
-bool db_meta_read_str(sqlite3 *db, const char *key, char *out, size_t max_len)
-{
+bool db_meta_read_str(sqlite3 *db, const char *key, char *out, size_t max_len) {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db, "SELECT value FROM metadata WHERE key=?", -1, &s, NULL) != SQLITE_OK)
         return false;
@@ -77,8 +71,7 @@ bool db_meta_read_str(sqlite3 *db, const char *key, char *out, size_t max_len)
     return ok;
 }
 
-bool db_meta_update_u32(sqlite3 *db, const char *key, uint32_t val)
-{
+bool db_meta_update_u32(sqlite3 *db, const char *key, uint32_t val) {
     sqlite3_stmt *s;
     if (sqlite3_prepare_v2(db, "UPDATE metadata SET value=? WHERE key=?", -1, &s, NULL) != SQLITE_OK)
         return false;
@@ -90,12 +83,10 @@ bool db_meta_update_u32(sqlite3 *db, const char *key, uint32_t val)
     return rc == SQLITE_DONE;
 }
 
-int64_t find_rowid(pcache_volume *v, const void *id, int *sq_err)
-{
+int64_t find_rowid(pcache_volume *v, const void *id, int *sq_err) {
     uint32_t      h  = XXH32(id, v->config.id_size, 0);
     sqlite3_stmt *s  = NULL;
-    int           rc = sqlite3_prepare_v2(
-        v->db, "SELECT rowid FROM pages WHERE id_hash=? AND id=?", -1, &s, NULL);
+    int           rc = sqlite3_prepare_v2(v->db, "SELECT rowid FROM pages WHERE id_hash=? AND id=?", -1, &s, NULL);
     if (rc != SQLITE_OK) {
         SET_ERR(sq_err, rc);
         return -1;
@@ -114,10 +105,9 @@ int64_t find_rowid(pcache_volume *v, const void *id, int *sq_err)
     return rowid;
 }
 
-bool do_sync(pcache_volume *v)
-{
+bool do_sync(pcache_volume *v) {
     if (fsync(v->data_fd) != 0)
         return false;
-    sqlite3_wal_checkpoint_v2(v->db, NULL, SQLITE_CHECKPOINT_FULL, NULL, NULL);
-    return true;
+    int rc = sqlite3_wal_checkpoint_v2(v->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);
+    return rc == SQLITE_OK;
 }
