@@ -256,9 +256,9 @@ void pcache_set_max_pages(pcache_handle               handle,
                 sqlite3_finalize(s);
             }
 
+            int64_t cursor = v->fifo_next;
             if (live > new_max_pages) {
                 uint32_t excess = live - new_max_pages;
-                int64_t  cursor = v->fifo_next;
                 for (uint32_t evicted = 0; evicted < excess;) {
                     sqlite3_stmt *cs;
                     bool          is_live = false;
@@ -298,9 +298,15 @@ void pcache_set_max_pages(pcache_handle               handle,
                 }
             }
 
-            int64_t new_fifo = v->fifo_next;
+            /* The local `cursor` has advanced past every evicted slot, so it
+             * now points at the new oldest live page (or, when all live pages
+             * were evicted, at the slot that would have been evicted next).
+             * Use it — not the original v->fifo_next — as the basis for the
+             * clamp, otherwise subsequent evictions may skip the true oldest
+             * live page. */
+            int64_t new_fifo = (live > new_max_pages) ? cursor : v->fifo_next;
             if (new_fifo > (int64_t)new_max_pages)
-                new_fifo = (new_fifo % (int64_t)new_max_pages) + 1;
+                new_fifo = ((new_fifo - 1) % (int64_t)new_max_pages) + 1;
             v->fifo_next = new_fifo;
 
             /* Persist the updated cursor. */

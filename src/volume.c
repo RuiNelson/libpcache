@@ -46,6 +46,10 @@ void pcache_create(const pcache_file_pair     *paths,
         return;
     }
 
+    /* The db_fd was used solely for the O_EXCL existence check; SQLite will
+     * open the file with its own fd.  Close now to avoid a descriptor leak. */
+    close(db_fd);
+
     sqlite3 *db = NULL;
     int      rc = sqlite3_open_v2(paths->database_path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     if (rc != SQLITE_OK) {
@@ -135,7 +139,6 @@ void pcache_create(const pcache_file_pair     *paths,
 fail:
     sqlite3_close(db);
     close(data_fd);
-    close(db_fd);
     unlink(paths->data_path);
     unlink(paths->database_path);
 }
