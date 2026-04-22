@@ -1,12 +1,12 @@
 #include "libpcache.h"
 #include "tst.h"
 
+#include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/stat.h>
-#include <sqlite3.h>
+#include <unistd.h>
 
 /* ──────────── Utilities ──────────── */
 
@@ -27,9 +27,9 @@ static uint32_t db_page_count(void) {
     sqlite3 *db = NULL;
     if (sqlite3_open(TMP_DB, &db) != SQLITE_OK)
         return 0;
-    sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
-    uint32_t count = 0;
+    sqlite3_stmt *stmt  = NULL;
+    int           rc    = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
+    uint32_t      count = 0;
     if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
         count = (uint32_t)sqlite3_column_int64(stmt, 0);
     sqlite3_finalize(stmt);
@@ -43,8 +43,8 @@ static uint32_t db_rowid_mask(void) {
     if (sqlite3_open(TMP_DB, &db) != SQLITE_OK)
         return 0;
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
-    uint32_t mask = 0;
+    int           rc   = sqlite3_prepare_v2(db, "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
+    uint32_t      mask = 0;
     while (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
         mask |= 1u << (sqlite3_column_int64(stmt, 0) - 1);
     sqlite3_finalize(stmt);
@@ -58,8 +58,8 @@ static uint32_t db_fifo_next(void) {
     if (sqlite3_open(TMP_DB, &db) != SQLITE_OK)
         return 0;
     sqlite3_stmt *stmt = NULL;
-    int rc = sqlite3_prepare_v2(db, "SELECT next_rowid FROM fifo_cursor", -1, &stmt, NULL);
-    uint32_t next = 0;
+    int           rc   = sqlite3_prepare_v2(db, "SELECT next_rowid FROM fifo_cursor", -1, &stmt, NULL);
+    uint32_t      next = 0;
     if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
         next = (uint32_t)sqlite3_column_int64(stmt, 0);
     sqlite3_finalize(stmt);
@@ -386,10 +386,11 @@ tstsuite("libpcache") {
         tstcheck(pe == PCACHE_PUT_PAGE_OK, "FIFO write beyond capacity must succeed");
 
         /* id=1 (oldest at open time) must be evicted; id=2 must survive. */
-        tstcheck(pcache_check_page(h, ((uint8_t[]){1}), NULL, NULL) == false,
-                 "id=1 must be evicted after reopen+fill+evict");
-        tstcheck(pcache_check_page(h, ((uint8_t[]){2}), NULL, NULL) == true,
-                 "id=2 must survive after reopen+fill+evict");
+        uint8_t id_check[ID_SIZE];
+        make_id(id_check, 1);
+        tstcheck(pcache_check_page(h, id_check, NULL, NULL) == false, "id=1 must be evicted after reopen+fill+evict");
+        make_id(id_check, 2);
+        tstcheck(pcache_check_page(h, id_check, NULL, NULL) == true, "id=2 must survive after reopen+fill+evict");
 
         pcache_close(h, NULL, NULL, NULL);
         cleanup_files();
@@ -420,19 +421,28 @@ tstsuite("libpcache") {
             pcache_close(h, NULL, NULL, NULL);
         }
 
-        /* After 3 cycles we have 6 unique pages across 3 slots.
-         * The volume is full and oldest pages must have been evicted. */
+        /* After 3 cycles we have written 6 pages (ids 1-2, 4-5, 7-8) across 3 slots.
+         * Eviction sequence (cursor starts at 1, advances only on replacement):
+         *   cycle 1: inserts ids 4 (rowid3), then evicts rowid1→id5; fifo=2
+         *   cycle 2: evicts rowid2→id7, fifo=3; evicts rowid3→id8, fifo=1
+         * Volume after 3 cycles: rowid1=id5, rowid2=id7, rowid3=id8.
+         * ids 1, 2 and 4 have been evicted; ids 5, 7, 8 survive. */
         pcache_handle h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
 
-        make_id(id, 7);
-        pcache_put_page(h, id, page, false, false, NULL, NULL, NULL);
-        make_id(id, 8);
-        pcache_put_page(h, id, page, false, false, NULL, NULL, NULL);
+        /* Use fresh ids (10, 11) to avoid creating duplicates. */
+        make_id(id, 10);
+        pcache_put_page(h, id, page, false, false, NULL, NULL, NULL); /* evicts rowid1(id5) */
+        make_id(id, 11);
+        pcache_put_page(h, id, page, false, false, NULL, NULL, NULL); /* evicts rowid2(id7) */
 
-        /* Cycle 2's pages (ids 4,5) should be present; cycle 1's (1,2) evicted. */
-        tstcheck(pcache_check_page(h, ((uint8_t[]){1}), NULL, NULL) == false, "id=1 evicted");
-        tstcheck(pcache_check_page(h, ((uint8_t[]){4}), NULL, NULL) == true, "id=4 present");
-        tstcheck(pcache_check_page(h, ((uint8_t[]){5}), NULL, NULL) == true, "id=5 present");
+        /* ids 1, 4 were evicted; id=8 (rowid3) survived all evictions. */
+        uint8_t id_chk[ID_SIZE];
+        make_id(id_chk, 1);
+        tstcheck(pcache_check_page(h, id_chk, NULL, NULL) == false, "id=1 evicted");
+        make_id(id_chk, 4);
+        tstcheck(pcache_check_page(h, id_chk, NULL, NULL) == false, "id=4 evicted");
+        make_id(id_chk, 8);
+        tstcheck(pcache_check_page(h, id_chk, NULL, NULL) == true, "id=8 present");
 
         pcache_close(h, NULL, NULL, NULL);
         cleanup_files();
@@ -703,30 +713,32 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT value FROM metadata WHERE key = 'page_size'", -1, &stmt, NULL) == SQLITE_OK,
-            "prepare must succeed");
-        tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "metadata must have page_size row");
-        uint32_t ps = (uint32_t)sqlite3_column_int64(stmt, 0);
+/* Numeric metadata is stored as a 4-byte little-endian blob per spec. */
+#define READ_META_U32(db_, stmt_, key_, out_)                                                                          \
+    do {                                                                                                               \
+        tstcheck(sqlite3_prepare_v2((db_), "SELECT value FROM metadata WHERE key = '" key_ "'", -1, &(stmt_), NULL) == \
+                     SQLITE_OK,                                                                                        \
+                 "prepare must succeed for " key_);                                                                    \
+        tstcheck(sqlite3_step(stmt_) == SQLITE_ROW, "metadata must have " key_ " row");                                \
+        const uint8_t *_b = (const uint8_t *)sqlite3_column_blob((stmt_), 0);                                          \
+        tstcheck(_b != NULL && sqlite3_column_bytes((stmt_), 0) >= 4, key_ " blob must be at least 4 bytes");          \
+        if (_b && sqlite3_column_bytes((stmt_), 0) >= 4)                                                               \
+            (out_) = (uint32_t)_b[0] | ((uint32_t)_b[1] << 8) | ((uint32_t)_b[2] << 16) | ((uint32_t)_b[3] << 24);     \
+        sqlite3_finalize(stmt_);                                                                                       \
+    } while (0)
+
+        uint32_t ps = 0, mp = 0, is = 0;
+        READ_META_U32(db, stmt, "page_size", ps);
         tstcheck(ps == PAGE_SIZE, "page_size must be stored correctly");
-        sqlite3_finalize(stmt);
 
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT value FROM metadata WHERE key = 'max_pages'", -1, &stmt, NULL) == SQLITE_OK);
-        tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "metadata must have max_pages row");
-        uint32_t mp = (uint32_t)sqlite3_column_int64(stmt, 0);
+        READ_META_U32(db, stmt, "max_pages", mp);
         tstcheck(mp == MAX_PAGES, "max_pages must be stored correctly");
-        sqlite3_finalize(stmt);
 
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT value FROM metadata WHERE key = 'id_size'", -1, &stmt, NULL) == SQLITE_OK);
-        tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "metadata must have id_size row");
-        uint32_t is = (uint32_t)sqlite3_column_int64(stmt, 0);
+        READ_META_U32(db, stmt, "id_size", is);
         tstcheck(is == ID_SIZE, "id_size must be stored correctly");
-        sqlite3_finalize(stmt);
 
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT value FROM metadata WHERE key = 'capacity_policy'", -1, &stmt, NULL) == SQLITE_OK);
+        tstcheck(sqlite3_prepare_v2(db, "SELECT value FROM metadata WHERE key = 'capacity_policy'", -1, &stmt, NULL) ==
+                 SQLITE_OK);
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "metadata must have capacity_policy row");
         /* value is stored as text string, null-terminated */
         const char *cp = (const char *)sqlite3_column_text(stmt, 0);
@@ -782,9 +794,8 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT id_hash FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) == SQLITE_OK,
-            "prepare must succeed");
+        tstcheck(sqlite3_prepare_v2(db, "SELECT id_hash FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) == SQLITE_OK,
+                 "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have one live row");
         int64_t hval = sqlite3_column_int64(stmt, 0);
         tstcheck(hval != 0, "id_hash must be non-zero for non-null id");
@@ -805,8 +816,7 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db,
-            "SELECT sql FROM sqlite_master WHERE name = 'idx_lookup'", -1, &stmt, NULL);
+        int rc = sqlite3_prepare_v2(db, "SELECT sql FROM sqlite_master WHERE name = 'idx_lookup'", -1, &stmt, NULL);
         tstcheck(rc == SQLITE_OK, "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "idx_lookup must exist");
 
@@ -872,20 +882,21 @@ tstsuite("libpcache") {
             pcache_put_page(h, id, page, false, false, NULL, NULL, NULL);
         }
 
-        /* fifo_next must be 4 (next slot after filling 1..3 in a 3-slot volume) */
+        /* The cursor only advances on eviction (replacement), not on insert.
+         * After filling 3 slots via 3 inserts, fifo_next is still 1. */
         uint32_t next = db_fifo_next();
-        tstcheck(next == 4, "fifo_next must be 4 after initial fill (got %u)", next);
+        tstcheck(next == 1, "fifo_next must be 1 after initial fill (cursor not yet advanced)");
 
-        /* Fourth put evicts rowid 1 */
+        /* Fourth put evicts rowid 1 (fifo_next=1); cursor advances to 2. */
         make_id(id, 4);
         pcache_put_page(h, id, page, false, false, NULL, NULL, NULL);
-        tstcheck(db_fifo_next() == 1, "fifo_next must wrap to 1 after first eviction");
+        tstcheck(db_fifo_next() == 2, "fifo_next must advance to 2 after first eviction");
 
         pcache_close(h, NULL, NULL, NULL);
 
-        /* Reopen and verify cursor is still 1 */
+        /* Reopen and verify cursor persisted as 2. */
         h = pcache_open(&TEST_PATHS, false, NULL, NULL, NULL);
-        tstcheck(db_fifo_next() == 1, "fifo_next must persist as 1 after reopen");
+        tstcheck(db_fifo_next() == 2, "fifo_next must persist as 2 after reopen");
 
         /* Evict rowid 2 */
         make_id(id, 5);
@@ -913,8 +924,7 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db,
-            "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
+        int           rc   = sqlite3_prepare_v2(db, "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL);
         tstcheck(rc == SQLITE_OK, "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have one live row");
         int64_t rowid = sqlite3_column_int64(stmt, 0);
@@ -924,14 +934,13 @@ tstsuite("libpcache") {
         FILE *f = fopen(TMP_DATA, "rb");
         tstcheck(f != NULL, "data file must be readable");
         uint8_t buf[PAGE_SIZE];
-        long offset = (long)(rowid - 1) * PAGE_SIZE;
+        long    offset = (long)(rowid - 1) * PAGE_SIZE;
         tstcheck(fseek(f, offset, SEEK_SET) == 0, "seek to rowid offset must succeed");
         tstcheck(fread(buf, 1, PAGE_SIZE, f) == PAGE_SIZE, "must read PAGE_SIZE bytes");
         fclose(f);
 
         /* The bytes should match what we wrote (pattern 1) */
-        tstcheck(memcmp(buf, page, PAGE_SIZE) == 0,
-                 "data file content at rowid offset must match stored page");
+        tstcheck(memcmp(buf, page, PAGE_SIZE) == 0, "data file content at rowid offset must match stored page");
 
         sqlite3_close(db);
         pcache_close(h, NULL, NULL, NULL);
@@ -967,16 +976,17 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db,
-            "SELECT COUNT(*) FROM pages", -1, &stmt, NULL);
+        int           rc   = sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pages", -1, &stmt, NULL);
         tstcheck(rc == SQLITE_OK, "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have rows");
         int64_t total_rows = sqlite3_column_int64(stmt, 0);
-        tstcheck(total_rows == 2, "total rows (live + deleted) must be 2, got %lld", total_rows);
+        /* In FIXED mode, reuse does UPDATE (not INSERT), so there is still only 1 row. */
+        tstcheck(
+            total_rows == 1, "total rows after reuse must be 1 (slot was updated, not inserted), got %lld", total_rows);
 
         sqlite3_finalize(stmt);
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT COUNT(*) FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) == SQLITE_OK);
+        tstcheck(sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) ==
+                 SQLITE_OK);
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have rows");
         int64_t live_rows = sqlite3_column_int64(stmt, 0);
         tstcheck(live_rows == 1, "live rows must be 1 after reuse (got %lld)", live_rows);
@@ -1050,7 +1060,10 @@ tstsuite("libpcache") {
 
         int is_zero = 1;
         for (uint32_t i = 0; i < PAGE_SIZE; i++)
-            if (buf[i] != 0) { is_zero = 0; break; }
+            if (buf[i] != 0) {
+                is_zero = 0;
+                break;
+            }
         tstcheck(is_zero, "data region must be zeros after wipe");
 
         pcache_close(h, NULL, NULL, NULL);
@@ -1088,8 +1101,7 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db,
-            "SELECT rowid FROM pages WHERE id IS NULL", -1, &stmt, NULL);
+        int           rc   = sqlite3_prepare_v2(db, "SELECT rowid FROM pages WHERE id IS NULL", -1, &stmt, NULL);
         tstcheck(rc == SQLITE_OK, "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have one deleted row with NULL id");
         int64_t deleted_rowid = sqlite3_column_int64(stmt, 0);
@@ -1102,8 +1114,7 @@ tstsuite("libpcache") {
         pcache_put_page(h, id_c, page, false, false, NULL, NULL, NULL);
 
         /* Verify id_c landed at rowid 1 */
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) == SQLITE_OK);
+        tstcheck(sqlite3_prepare_v2(db, "SELECT rowid FROM pages WHERE id IS NOT NULL", -1, &stmt, NULL) == SQLITE_OK);
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "must have one live row");
         int64_t live_rowid = sqlite3_column_int64(stmt, 0);
         tstcheck(live_rowid == 1, "new page must land at rowid 1 (FIFO cursor), not at deleted slot");
@@ -1124,10 +1135,15 @@ tstsuite("libpcache") {
         tstcheck(sqlite3_open(TMP_DB, &db) == SQLITE_OK, "sqlite3_open must succeed");
 
         sqlite3_stmt *stmt = NULL;
-        tstcheck(sqlite3_prepare_v2(db,
-            "SELECT value FROM metadata WHERE key = 'version'", -1, &stmt, NULL) == SQLITE_OK);
+        /* version is stored as a 4-byte little-endian blob per spec. */
+        tstcheck(sqlite3_prepare_v2(db, "SELECT value FROM metadata WHERE key = 'version'", -1, &stmt, NULL) ==
+                 SQLITE_OK);
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "metadata must have version row");
-        uint32_t ver = (uint32_t)sqlite3_column_int64(stmt, 0);
+        const uint8_t *vb = (const uint8_t *)sqlite3_column_blob(stmt, 0);
+        tstcheck(vb != NULL && sqlite3_column_bytes(stmt, 0) >= 4, "version blob must be 4 bytes");
+        uint32_t ver = 0;
+        if (vb && sqlite3_column_bytes(stmt, 0) >= 4)
+            ver = (uint32_t)vb[0] | ((uint32_t)vb[1] << 8) | ((uint32_t)vb[2] << 16) | ((uint32_t)vb[3] << 24);
         tstcheck(ver == 1, "schema version must be 1 (got %u)", ver);
         sqlite3_finalize(stmt);
 
@@ -1146,9 +1162,8 @@ tstsuite("libpcache") {
 
         /* Get the CREATE TABLE SQL for pages */
         sqlite3_stmt *stmt = NULL;
-        int rc = sqlite3_prepare_v2(db,
-            "SELECT sql FROM sqlite_master WHERE name = 'pages' AND type = 'table'",
-            -1, &stmt, NULL);
+        int           rc   = sqlite3_prepare_v2(
+            db, "SELECT sql FROM sqlite_master WHERE name = 'pages' AND type = 'table'", -1, &stmt, NULL);
         tstcheck(rc == SQLITE_OK, "prepare must succeed");
         tstcheck(sqlite3_step(stmt) == SQLITE_ROW, "pages table must exist");
         const char *create_sql = (const char *)sqlite3_column_text(stmt, 0);
@@ -1190,8 +1205,7 @@ tstsuite("libpcache") {
             make_id(id, i);
             pcache_put_page_error pe = PCACHE_PUT_PAGE_OK;
             pcache_put_page(h, id, page, false, false, &pe, NULL, NULL);
-            tstcheck(pe == PCACHE_PUT_PAGE_OK,
-                     "FIFO put #%d must succeed (no CAPACITY_EXCEEDED)", i);
+            tstcheck(pe == PCACHE_PUT_PAGE_OK, "FIFO put #%d must succeed (no CAPACITY_EXCEEDED)", i);
         }
 
         pcache_close(h, NULL, NULL, NULL);
@@ -1222,8 +1236,7 @@ tstsuite("libpcache") {
         make_id(id, 3);
         pcache_put_page_error pe = PCACHE_PUT_PAGE_OK;
         pcache_put_page(h, id, page, false, false, &pe, NULL, NULL);
-        tstcheck(pe == PCACHE_PUT_PAGE_CAPACITY_EXCEEDED,
-                 "FIXED put beyond capacity must return CAPACITY_EXCEEDED");
+        tstcheck(pe == PCACHE_PUT_PAGE_CAPACITY_EXCEEDED, "FIXED put beyond capacity must return CAPACITY_EXCEEDED");
 
         pcache_close(h, NULL, NULL, NULL);
         cleanup_files();

@@ -1,26 +1,26 @@
 #include "libpcache.h"
 #include "tst.h"
 
+#include <AvailabilityMacros.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <time.h>
 #include <sys/stat.h>
-#include <AvailabilityMacros.h>
+#include <time.h>
+#include <unistd.h>
 
 /* ──────────── Configuration ──────────── */
 
-#define TMP_DB    "/tmp/pcache_bench.db"
-#define TMP_DATA  "/tmp/pcache_bench.dat"
+#define TMP_DB          "/tmp/pcache_bench.db"
+#define TMP_DATA        "/tmp/pcache_bench.dat"
 
-#define BENCH_PAGE_SIZE (32 * 1024u)   /* 32 KiB */
+#define BENCH_PAGE_SIZE (32 * 1024u) /* 32 KiB */
 #define BENCH_ID_SIZE   64u
 
 static const pcache_configuration BENCH_FIXED_CFG = {
     .capacity_policy = PCACHE_CAPACITY_FIXED,
     .page_size       = BENCH_PAGE_SIZE,
-    .max_pages       = 0,  /* overridden per benchmark */
+    .max_pages       = 0, /* overridden per benchmark */
     .id_size         = BENCH_ID_SIZE,
 };
 
@@ -55,18 +55,18 @@ static int verify_page(const uint8_t *buf, uint32_t page_idx) {
 /* ──────────── Benchmark helpers ──────────── */
 
 typedef struct {
-    double   mb_written;
-    double   ops_written;
-    double   write_time_sec;
-    double   mb_read;
-    double   ops_read;
-    double   read_time_sec;
+    double mb_written;
+    double ops_written;
+    double write_time_sec;
+    double mb_read;
+    double ops_read;
+    double read_time_sec;
 } benchmark_result;
 
 /* Benchmark sequential write of count pages. */
 static void bench_seq_write(pcache_handle h, uint32_t count, benchmark_result *r) {
-    uint8_t id[BENCH_ID_SIZE];
-    uint8_t *page = malloc(BENCH_PAGE_SIZE);
+    uint8_t         id[BENCH_ID_SIZE];
+    uint8_t        *page = malloc(BENCH_PAGE_SIZE);
     struct timespec t0;
 
     memset(id, 0, BENCH_ID_SIZE);
@@ -80,15 +80,15 @@ static void bench_seq_write(pcache_handle h, uint32_t count, benchmark_result *r
     }
 
     r->write_time_sec = elapsed_since(t0);
-    r->mb_written = (double)count * BENCH_PAGE_SIZE / (1024.0 * 1024.0);
-    r->ops_written = (double)count;
+    r->mb_written     = (double)count * BENCH_PAGE_SIZE / (1024.0 * 1024.0);
+    r->ops_written    = (double)count;
     free(page);
 }
 
 /* Benchmark sequential read of count pages. */
 static void bench_seq_read(pcache_handle h, uint32_t count, benchmark_result *r) {
-    uint8_t id[BENCH_ID_SIZE];
-    uint8_t *page = malloc(BENCH_PAGE_SIZE);
+    uint8_t         id[BENCH_ID_SIZE];
+    uint8_t        *page = malloc(BENCH_PAGE_SIZE);
     struct timespec t0;
 
     memset(id, 0, BENCH_ID_SIZE);
@@ -100,8 +100,8 @@ static void bench_seq_read(pcache_handle h, uint32_t count, benchmark_result *r)
     }
 
     r->read_time_sec = elapsed_since(t0);
-    r->mb_read = (double)count * BENCH_PAGE_SIZE / (1024.0 * 1024.0);
-    r->ops_read = (double)count;
+    r->mb_read       = (double)count * BENCH_PAGE_SIZE / (1024.0 * 1024.0);
+    r->ops_read      = (double)count;
     free(page);
 }
 
@@ -109,11 +109,15 @@ static void bench_seq_read(pcache_handle h, uint32_t count, benchmark_result *r)
 
 static void print_result(const char *label, uint32_t count, benchmark_result *r) {
     double write_mbps = r->mb_written / r->write_time_sec;
-    double read_mbps  = r->mb_read   / r->read_time_sec;
+    double read_mbps  = r->mb_read / r->read_time_sec;
     double write_ops  = r->ops_written / r->write_time_sec;
-    double read_ops   = r->ops_read   / r->read_time_sec;
+    double read_ops   = r->ops_read / r->read_time_sec;
     printf("%-40s %8.2f MB/s write  %8.2f MB/s read  %10.0f writes/s  %10.0f reads/s\n",
-           label, write_mbps, read_mbps, write_ops, read_ops);
+           label,
+           write_mbps,
+           read_mbps,
+           write_ops,
+           read_ops);
 }
 
 /* ──────────── Test suite ──────────── */
@@ -124,8 +128,8 @@ tstsuite("pcache benchmarks") {
         cleanup_files();
 
         /* 1 GB volume with 32 KiB pages → 32768 pages */
-        const uint32_t target_pages = (1u * 1024u * 1024u * 1024u) / BENCH_PAGE_SIZE;
-        const pcache_configuration cfg = {
+        const uint32_t             target_pages = (1u * 1024u * 1024u * 1024u) / BENCH_PAGE_SIZE;
+        const pcache_configuration cfg          = {
             .capacity_policy = PCACHE_CAPACITY_FIFO,
             .page_size       = BENCH_PAGE_SIZE,
             .max_pages       = target_pages,
@@ -157,9 +161,9 @@ tstsuite("pcache benchmarks") {
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
-        uint8_t *id = malloc(BENCH_ID_SIZE);
+        uint8_t *id   = malloc(BENCH_ID_SIZE);
         uint8_t *page = malloc(BENCH_PAGE_SIZE);
-        memset(page, 0, BENCH_PAGE_SIZE);  /* zeros for data */
+        memset(page, 0, BENCH_PAGE_SIZE); /* zeros for data */
 
         printf("Filling volume with %u pages (zeros + random IDs)...\n", target_pages);
         for (uint32_t i = 0; i < target_pages; i++) {
@@ -194,7 +198,7 @@ tstsuite("pcache benchmarks") {
     tstcase("sequential write throughput: 1000 pages, 32 KiB") {
         cleanup_files();
 
-        const uint32_t n = 1000;
+        const uint32_t             n   = 1000;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -222,7 +226,7 @@ tstsuite("pcache benchmarks") {
     tstcase("sequential read throughput: 1000 pages, 32 KiB") {
         cleanup_files();
 
-        const uint32_t n = 1000;
+        const uint32_t             n   = 1000;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -234,7 +238,7 @@ tstsuite("pcache benchmarks") {
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
         /* Pre-write pages */
-        uint8_t id[BENCH_ID_SIZE];
+        uint8_t  id[BENCH_ID_SIZE];
         uint8_t *page = malloc(BENCH_PAGE_SIZE);
         for (uint32_t i = 0; i < n; i++) {
             id[0] = (uint8_t)(i + 1);
@@ -249,9 +253,8 @@ tstsuite("pcache benchmarks") {
         printf("\n=== Sequential read: %u pages × 32 KiB ===\n", n);
         printf("Time:    %.3f sec\n", r.read_time_sec);
         printf("Read:    %.2f MiB\n", r.mb_read);
-        printf("Read throughput:  %.2f MB/s  (%.0f ops/s)\n",
-               r.mb_read / r.read_time_sec,
-               r.ops_read / r.read_time_sec);
+        printf(
+            "Read throughput:  %.2f MB/s  (%.0f ops/s)\n", r.mb_read / r.read_time_sec, r.ops_read / r.read_time_sec);
 
         pcache_close(h, NULL, NULL, NULL);
         cleanup_files();
@@ -260,7 +263,7 @@ tstsuite("pcache benchmarks") {
     tstcase("write + read round-trip throughput") {
         cleanup_files();
 
-        const uint32_t n = 500;
+        const uint32_t             n   = 500;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -271,8 +274,8 @@ tstsuite("pcache benchmarks") {
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
-        uint8_t id[BENCH_ID_SIZE];
-        uint8_t *page = malloc(BENCH_PAGE_SIZE);
+        uint8_t         id[BENCH_ID_SIZE];
+        uint8_t        *page = malloc(BENCH_PAGE_SIZE);
         struct timespec t0;
 
         /* Write */
@@ -294,10 +297,8 @@ tstsuite("pcache benchmarks") {
 
         double total_mb = (double)n * BENCH_PAGE_SIZE / (1024.0 * 1024.0);
         printf("\n=== Write+Read round-trip: %u pages × 32 KiB ===\n", n);
-        printf("Write: %.3f sec  (%.2f MB/s, %.0f ops/s)\n",
-               write_time, total_mb / write_time, (double)n / write_time);
-        printf("Read:  %.3f sec  (%.2f MB/s, %.0f ops/s)\n",
-               read_time, total_mb / read_time, (double)n / read_time);
+        printf("Write: %.3f sec  (%.2f MB/s, %.0f ops/s)\n", write_time, total_mb / write_time, (double)n / write_time);
+        printf("Read:  %.3f sec  (%.2f MB/s, %.0f ops/s)\n", read_time, total_mb / read_time, (double)n / read_time);
 
         free(page);
         pcache_close(h, NULL, NULL, NULL);
@@ -307,7 +308,7 @@ tstsuite("pcache benchmarks") {
     tstcase("random access latency: 1000 point lookups") {
         cleanup_files();
 
-        const uint32_t n = 1000;
+        const uint32_t             n   = 1000;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -318,7 +319,7 @@ tstsuite("pcache benchmarks") {
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
-        uint8_t id[BENCH_ID_SIZE];
+        uint8_t  id[BENCH_ID_SIZE];
         uint8_t *page = malloc(BENCH_PAGE_SIZE);
 
         /* Write all pages */
@@ -350,9 +351,9 @@ tstsuite("pcache benchmarks") {
         cleanup_files();
 
         /* 100-slot FIFO, write 1000 pages (10× capacity) */
-        const uint32_t capacity = 100;
-        const uint32_t total     = 1000;
-        const pcache_configuration cfg = {
+        const uint32_t             capacity = 100;
+        const uint32_t             total    = 1000;
+        const pcache_configuration cfg      = {
             .capacity_policy = PCACHE_CAPACITY_FIFO,
             .page_size       = BENCH_PAGE_SIZE,
             .max_pages       = capacity,
@@ -362,8 +363,8 @@ tstsuite("pcache benchmarks") {
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
-        uint8_t id[BENCH_ID_SIZE];
-        uint8_t *page = malloc(BENCH_PAGE_SIZE);
+        uint8_t         id[BENCH_ID_SIZE];
+        uint8_t        *page = malloc(BENCH_PAGE_SIZE);
         struct timespec t0;
 
         clock_gettime(CLOCK_MONOTONIC, &t0);
@@ -389,7 +390,9 @@ tstsuite("pcache benchmarks") {
         printf("Live pages in last %u ids: %u / %u\n", capacity, present, capacity);
         tstcheck((int)present == (int)capacity,
                  "exactly %u pages must survive after %u writes (got %u)",
-                 capacity, total, present);
+                 capacity,
+                 total,
+                 present);
 
         free(page);
         pcache_close(h, NULL, NULL, NULL);
@@ -399,7 +402,7 @@ tstsuite("pcache benchmarks") {
     tstcase("delete throughput") {
         cleanup_files();
 
-        const uint32_t n = 500;
+        const uint32_t             n   = 500;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -408,9 +411,9 @@ tstsuite("pcache benchmarks") {
         };
 
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
-        pcache_handle h = pcache_open(&BENCH_PATHS, true, NULL, NULL, NULL);  /* preload free list */
+        pcache_handle h = pcache_open(&BENCH_PATHS, true, NULL, NULL, NULL); /* preload free list */
 
-        uint8_t id[BENCH_ID_SIZE];
+        uint8_t  id[BENCH_ID_SIZE];
         uint8_t *page = malloc(BENCH_PAGE_SIZE);
 
         /* Write pages */
@@ -441,7 +444,7 @@ tstsuite("pcache benchmarks") {
     tstcase("defragment throughput") {
         cleanup_files();
 
-        const uint32_t n = 200;
+        const uint32_t             n   = 200;
         const pcache_configuration cfg = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = BENCH_PAGE_SIZE,
@@ -452,7 +455,7 @@ tstsuite("pcache benchmarks") {
         pcache_create(&BENCH_PATHS, &cfg, false, false, NULL, NULL, NULL);
         pcache_handle h = pcache_open(&BENCH_PATHS, false, NULL, NULL, NULL);
 
-        uint8_t id[BENCH_ID_SIZE];
+        uint8_t  id[BENCH_ID_SIZE];
         uint8_t *page = malloc(BENCH_PAGE_SIZE);
 
         /* Write n pages, delete every other to leave ~100 live pages */
