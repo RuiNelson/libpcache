@@ -20,7 +20,37 @@ ctest --test-dir build
 
 # Run a single test binary directly (for verbose output)
 ./build/tests/pcache_test
+
+# Run benchmarks
+./build/tests/benchmark_pcache
+
+# Convenience scripts
+./test.sh       # build + run tests
+./benchmark.sh  # build + run benchmarks
+./format.sh     # clang-format all source files in-place
 ```
+
+## Repository Layout
+
+```
+include/          # public headers installed with the library
+  libpcache.h
+  libpcache_errors.h
+  module.modulemap
+src/              # implementation (not installed)
+  libpcache.c     # thin top-level entry point / dispatch
+  handle.c / .h   # open-handle table
+  db.c / .h       # SQLite helpers
+  volume.c        # volume lifecycle (create, open, close)
+  pages.c         # page read/write/delete operations
+  maintenance.c   # defragment, set_max_pages, preallocate
+  internal.h      # shared internal types and macros
+tests/
+  test_pcache.c   # unit tests (tst framework)
+  benchmark_pcache.c
+```
+
+The library is compiled as a **shared library** (`libpcache.so`, SOVERSION 1).
 
 ## Architecture
 
@@ -43,6 +73,7 @@ A volume consists of two files: a **data file** (fixed-size pages laid out seque
 - Functions never return errors via their return value. Each function takes a `pcache_<fn>_error *error` out-parameter, plus optional `int *sqlite_error` and `int *posix_error` pointers (any may be `NULL`).
 - Write operations take a `bool durable` parameter controlling whether `fsync` is awaited.
 - Error enum values are assigned explicitly to preserve binary compatibility.
+- Error enumerations live in `libpcache_errors.h`, which is transitively included by `libpcache.h`.
 
 ## Code Style
 
