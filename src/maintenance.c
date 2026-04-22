@@ -1,21 +1,19 @@
-#include "handle.h"
 #include "db.h"
+#include "handle.h"
 
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-void pcache_defragment(
-    pcache_handle            handle,
-    pcache_progress_fn       progress_callback,
-    void                    *progress_user_data,
-    bool                     shrink_file,
-    bool                     durable,
-    pcache_defragment_error *error,
-    int                     *sqlite_error,
-    int                     *posix_error)
-{
+void pcache_defragment(pcache_handle            handle,
+                       pcache_progress_fn       progress_callback,
+                       void                    *progress_user_data,
+                       bool                     shrink_file,
+                       bool                     durable,
+                       pcache_defragment_error *error,
+                       int                     *sqlite_error,
+                       int                     *posix_error) {
     SET_ERR(error, PCACHE_DEFRAGMENT_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -29,16 +27,15 @@ void pcache_defragment(
     pthread_mutex_lock(&v->mutex);
 
     /* ── Load live ROWIDs into memory ── */
-    int64_t *rowids   = NULL;
-    uint32_t live_cnt = 0;
-    uint32_t live_cap = 0;
+    int64_t *rowids          = NULL;
+    uint32_t live_cnt        = 0;
+    uint32_t live_cap        = 0;
+    int64_t  saved_fifo_next = v->fifo_next; /* restore on cancel */
 
     {
         sqlite3_stmt *s;
         int           rc = sqlite3_prepare_v2(
-            v->db,
-            "SELECT rowid FROM pages WHERE id_hash IS NOT NULL ORDER BY rowid ASC",
-            -1, &s, NULL);
+            v->db, "SELECT rowid FROM pages WHERE id_hash IS NOT NULL ORDER BY rowid ASC", -1, &s, NULL);
         if (rc != SQLITE_OK) {
             SET_ERR(sqlite_error, rc);
             SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
@@ -102,15 +99,13 @@ void pcache_defragment(
                 int rc = db_exec(v->db, "BEGIN IMMEDIATE");
                 if (rc == SQLITE_OK) {
                     sqlite3_stmt *s;
-                    rc = sqlite3_prepare_v2(
-                        v->db, "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &s, NULL);
+                    rc = sqlite3_prepare_v2(v->db, "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &s, NULL);
                     if (rc == SQLITE_OK) {
                         sqlite3_bind_int64(s, 1, next_compact);
                         sqlite3_step(s);
                         sqlite3_finalize(s);
                     }
-                    rc = sqlite3_prepare_v2(
-                        v->db, "UPDATE pages SET rowid=? WHERE rowid=?", -1, &s, NULL);
+                    rc = sqlite3_prepare_v2(v->db, "UPDATE pages SET rowid=? WHERE rowid=?", -1, &s, NULL);
                     if (rc == SQLITE_OK) {
                         sqlite3_bind_int64(s, 1, next_compact);
                         sqlite3_bind_int64(s, 2, r);
@@ -138,6 +133,7 @@ void pcache_defragment(
                 if (!progress_callback(frac, progress_user_data)) {
                     free(buf);
                     free(rowids);
+                    v->fifo_next = saved_fifo_next; /* restore on cancel */
                     SET_ERR(error, PCACHE_DEFRAGMENT_CANCELLED);
                     goto unlock;
                 }
@@ -164,8 +160,8 @@ cleanup_nulls:
 
     /* Reset FIFO cursor to the slot immediately after the last live page. */
     if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
-        int64_t      new_next = (int64_t)((live_cnt % v->config.max_pages) + 1);
-        v->fifo_next          = new_next;
+        int64_t new_next = (int64_t)((live_cnt % v->config.max_pages) + 1);
+        v->fifo_next     = new_next;
         sqlite3_stmt *s;
         if (sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &s, NULL) == SQLITE_OK) {
             sqlite3_bind_int64(s, 1, new_next);
@@ -194,14 +190,12 @@ unlock:
     pthread_mutex_unlock(&v->mutex);
 }
 
-void pcache_set_max_pages(
-    pcache_handle               handle,
-    uint32_t                    new_max_pages,
-    bool                        durable,
-    pcache_set_max_pages_error *error,
-    int                        *sqlite_error,
-    int                        *posix_error)
-{
+void pcache_set_max_pages(pcache_handle               handle,
+                          uint32_t                    new_max_pages,
+                          bool                        durable,
+                          pcache_set_max_pages_error *error,
+                          int                        *sqlite_error,
+                          int                        *posix_error) {
     SET_ERR(error, PCACHE_SET_MAX_PAGES_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -224,9 +218,7 @@ void pcache_set_max_pages(
             sqlite3_stmt *s;
             int64_t       beyond = 0;
             int           rc     = sqlite3_prepare_v2(
-                v->db,
-                "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?",
-                -1, &s, NULL);
+                v->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?", -1, &s, NULL);
             if (rc == SQLITE_OK) {
                 sqlite3_bind_int64(s, 1, (int64_t)new_max_pages);
                 if (sqlite3_step(s) == SQLITE_ROW)
@@ -259,11 +251,10 @@ void pcache_set_max_pages(
                 v->row_count = new_max_pages;
 
         } else { /* FIFO: evict oldest pages in circular order until within limit */
-            uint32_t     live = 0;
+            uint32_t      live = 0;
             sqlite3_stmt *s;
-            if (sqlite3_prepare_v2(v->db,
-                                   "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL",
-                                   -1, &s, NULL) == SQLITE_OK) {
+            if (sqlite3_prepare_v2(v->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL", -1, &s, NULL) ==
+                SQLITE_OK) {
                 if (sqlite3_step(s) == SQLITE_ROW)
                     live = (uint32_t)sqlite3_column_int64(s, 0);
                 sqlite3_finalize(s);
@@ -276,9 +267,7 @@ void pcache_set_max_pages(
                     sqlite3_stmt *cs;
                     bool          is_live = false;
                     int           rc      = sqlite3_prepare_v2(
-                        v->db,
-                        "SELECT 1 FROM pages WHERE rowid=? AND id_hash IS NOT NULL",
-                        -1, &cs, NULL);
+                        v->db, "SELECT 1 FROM pages WHERE rowid=? AND id_hash IS NOT NULL", -1, &cs, NULL);
                     if (rc == SQLITE_OK) {
                         sqlite3_bind_int64(cs, 1, cursor);
                         is_live = (sqlite3_step(cs) == SQLITE_ROW);
@@ -287,9 +276,7 @@ void pcache_set_max_pages(
                     if (is_live) {
                         sqlite3_stmt *us;
                         rc = sqlite3_prepare_v2(
-                            v->db,
-                            "UPDATE pages SET id_hash=NULL,id=NULL WHERE rowid=?",
-                            -1, &us, NULL);
+                            v->db, "UPDATE pages SET id_hash=NULL,id=NULL WHERE rowid=?", -1, &us, NULL);
                         if (rc == SQLITE_OK) {
                             sqlite3_bind_int64(us, 1, cursor);
                             sqlite3_step(us);
@@ -335,15 +322,13 @@ unlock:
     pthread_mutex_unlock(&v->mutex);
 }
 
-void pcache_preallocate(
-    pcache_handle             handle,
-    bool                      preallocate_database,
-    bool                      preallocate_datafile,
-    bool                      durable,
-    pcache_preallocate_error *error,
-    int                      *sqlite_error,
-    int                      *posix_error)
-{
+void pcache_preallocate(pcache_handle             handle,
+                        bool                      preallocate_database,
+                        bool                      preallocate_datafile,
+                        bool                      durable,
+                        pcache_preallocate_error *error,
+                        int                      *sqlite_error,
+                        int                      *posix_error) {
     SET_ERR(error, PCACHE_PREALLOCATE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -359,12 +344,14 @@ void pcache_preallocate(
     uint32_t max   = v->config.max_pages;
     uint32_t start = v->row_count + 1; /* first ROWID not yet in the table */
 
+    /* Guard: only insert rows if they don't already exist in the table.
+     * Handles the case where row_count was not updated (e.g., after a
+     * capacity increase that didn't preallocate). */
     if (preallocate_database && start <= max) {
         int rc = db_exec(v->db, "BEGIN");
         if (rc == SQLITE_OK) {
             sqlite3_stmt *s;
-            rc = sqlite3_prepare_v2(
-                v->db, "INSERT INTO pages(id_hash,id) VALUES(NULL,NULL)", -1, &s, NULL);
+            rc = sqlite3_prepare_v2(v->db, "INSERT INTO pages(id_hash,id) VALUES(NULL,NULL)", -1, &s, NULL);
             if (rc == SQLITE_OK) {
                 for (uint32_t i = start; i <= max && rc == SQLITE_OK; i++) {
                     rc = sqlite3_step(s);

@@ -46,7 +46,7 @@ A volume consists of two files: a **data file** (fixed-size pages laid out seque
 
 ## Code Style
 
-Formatting is enforced by `.clang-format` (LLVM base, 4-space indent, 120-column limit). Run `clang-format -i <file>` before committing.
+Formatting is enforced by `.clang-format` (LLVM base, 4-space indent, 120-column limit). Run `clang-format -i <file>` before committing. Use `./format.sh` to format all source files at once.
 
 ## Testing Framework
 

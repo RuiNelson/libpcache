@@ -1,5 +1,5 @@
-#include "handle.h"
 #include "db.h"
+#include "handle.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -7,21 +7,19 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-void pcache_create(
-    const pcache_file_pair     *paths,
-    const pcache_configuration *config,
-    bool                        preallocate_database,
-    bool                        preallocate_datafile,
-    pcache_create_error        *error,
-    int                        *sqlite_error,
-    int                        *posix_error)
-{
+void pcache_create(const pcache_file_pair     *paths,
+                   const pcache_configuration *config,
+                   bool                        preallocate_database,
+                   bool                        preallocate_datafile,
+                   pcache_create_error        *error,
+                   int                        *sqlite_error,
+                   int                        *posix_error) {
     SET_ERR(error, PCACHE_CREATE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
 
-    if (!paths || !paths->database_path || !paths->data_path || !config ||
-        config->page_size == 0 || config->max_pages == 0 || config->id_size == 0) {
+    if (!paths || !paths->database_path || !paths->data_path || !config || config->page_size == 0 ||
+        config->max_pages == 0 || config->id_size == 0) {
         SET_ERR(error, PCACHE_CREATE_INVALID_ARGUMENT);
         return;
     }
@@ -52,10 +50,9 @@ void pcache_create(
     db_configure(db);
 
     /* ── Schema ── */
-    const char *ddl =
-        "CREATE TABLE metadata (key TEXT NOT NULL, value BLOB NOT NULL);"
-        "CREATE TABLE pages    (id_hash INTEGER, id BLOB);"
-        "CREATE INDEX idx_lookup ON pages(id_hash) WHERE id_hash IS NOT NULL;";
+    const char *ddl = "CREATE TABLE metadata (key TEXT NOT NULL, value BLOB NOT NULL);"
+                      "CREATE TABLE pages    (id_hash INTEGER, id BLOB);"
+                      "CREATE INDEX idx_lookup ON pages(id_hash) WHERE id_hash IS NOT NULL;";
 
     rc = db_exec(db, ddl);
     if (rc == SQLITE_OK && config->capacity_policy == PCACHE_CAPACITY_FIFO) {
@@ -131,13 +128,11 @@ fail:
     unlink(paths->database_path);
 }
 
-pcache_handle pcache_open(
-    const pcache_file_pair *paths,
-    bool                    preload_free_list,
-    pcache_open_error      *error,
-    int                    *sqlite_error,
-    int                    *posix_error)
-{
+pcache_handle pcache_open(const pcache_file_pair *paths,
+                          bool                    preload_free_list,
+                          pcache_open_error      *error,
+                          int                    *sqlite_error,
+                          int                    *posix_error) {
     SET_ERR(error, PCACHE_OPEN_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -191,8 +186,7 @@ pcache_handle pcache_open(
 
     if (!db_meta_read_u32(v->db, "version", &version) ||
         !db_meta_read_str(v->db, "capacity_policy", policy_str, sizeof policy_str) ||
-        !db_meta_read_u32(v->db, "page_size", &page_size) ||
-        !db_meta_read_u32(v->db, "max_pages", &max_pages) ||
+        !db_meta_read_u32(v->db, "page_size", &page_size) || !db_meta_read_u32(v->db, "max_pages", &max_pages) ||
         !db_meta_read_u32(v->db, "id_size", &id_size) || version != PCACHE_SCHEMA_VERSION) {
         SET_ERR(error, PCACHE_OPEN_CORRUPT);
         goto fail;
@@ -231,16 +225,17 @@ pcache_handle pcache_open(
     }
 
     /* ── Preload free list (FIXED only) ── */
+    /* Note: preload_free_list is ignored on FIFO volumes per API spec. */
     if (v->config.capacity_policy == PCACHE_CAPACITY_FIXED && preload_free_list) {
         sqlite3_stmt *s;
-        if (sqlite3_prepare_v2(v->db,
-                               "SELECT rowid FROM pages WHERE id_hash IS NULL ORDER BY rowid",
-                               -1, &s, NULL) == SQLITE_OK) {
+        if (sqlite3_prepare_v2(v->db, "SELECT rowid FROM pages WHERE id_hash IS NULL ORDER BY rowid", -1, &s, NULL) ==
+            SQLITE_OK) {
             while (sqlite3_step(s) == SQLITE_ROW)
                 rv_push(&v->free_list, sqlite3_column_int64(s, 0));
             sqlite3_finalize(s);
         }
     }
+    /* On FIFO volumes, preload_free_list is intentionally ignored. */
 
     return handle_of(v);
 
@@ -251,12 +246,7 @@ fail:
     return 0;
 }
 
-void pcache_close(
-    pcache_handle       handle,
-    pcache_close_error *error,
-    int                *sqlite_error,
-    int                *posix_error)
-{
+void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *posix_error) {
     SET_ERR(error, PCACHE_CLOSE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -293,11 +283,8 @@ void pcache_close(
     release_slot(v);
 }
 
-pcache_configuration pcache_get_configuration(
-    pcache_handle                   handle,
-    pcache_get_configuration_error *error,
-    int                            *sqlite_error)
-{
+pcache_configuration
+pcache_get_configuration(pcache_handle handle, pcache_get_configuration_error *error, int *sqlite_error) {
     pcache_configuration cfg = {0};
     SET_ERR(error, PCACHE_GET_CONFIGURATION_OK);
     SET_ERR(sqlite_error, SQLITE_OK);

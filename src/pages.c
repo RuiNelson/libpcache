@@ -1,5 +1,5 @@
-#include "handle.h"
 #include "db.h"
+#include "handle.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -8,16 +8,14 @@
 
 #include <xxhash.h>
 
-void pcache_put_page(
-    pcache_handle          handle,
-    const void            *id,
-    const void            *page_data,
-    bool                   check_id_uniqueness,
-    bool                   durable,
-    pcache_put_page_error *error,
-    int                   *sqlite_error,
-    int                   *posix_error)
-{
+void pcache_put_page(pcache_handle          handle,
+                     const void            *id,
+                     const void            *page_data,
+                     bool                   check_id_uniqueness,
+                     bool                   durable,
+                     pcache_put_page_error *error,
+                     int                   *sqlite_error,
+                     int                   *posix_error) {
     SET_ERR(error, PCACHE_PUT_PAGE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -57,8 +55,8 @@ void pcache_put_page(
         } else {
             /* Lazy: query for a NULL slot when the free list was not preloaded. */
             sqlite3_stmt *s;
-            if (sqlite3_prepare_v2(v->db, "SELECT rowid FROM pages WHERE id_hash IS NULL LIMIT 1",
-                                   -1, &s, NULL) == SQLITE_OK) {
+            if (sqlite3_prepare_v2(v->db, "SELECT rowid FROM pages WHERE id_hash IS NULL LIMIT 1", -1, &s, NULL) ==
+                SQLITE_OK) {
                 if (sqlite3_step(s) == SQLITE_ROW)
                     target_rowid = sqlite3_column_int64(s, 0);
                 sqlite3_finalize(s);
@@ -77,7 +75,7 @@ void pcache_put_page(
     }
 
     /* ── SQLite transaction ── */
-    uint32_t     h  = XXH32(id, v->config.id_size, 0);
+    uint32_t      h = XXH32(id, v->config.id_size, 0);
     sqlite3_stmt *s = NULL;
     int           rc;
 
@@ -116,8 +114,9 @@ void pcache_put_page(
     }
 
     /* Advance the FIFO cursor atomically within the same transaction. */
-    if (rc == SQLITE_OK && v->config.capacity_policy == PCACHE_CAPACITY_FIFO && !do_insert) {
-        int64_t new_next = (target_rowid % (int64_t)v->config.max_pages) + 1;
+    if (rc == SQLITE_OK && v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
+        /* Spec: update to (next_rowid % max_pages) + 1 based on fifo_next, not target_rowid */
+        int64_t new_next = (v->fifo_next % (int64_t)v->config.max_pages) + 1;
         rc               = sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &s, NULL);
         if (rc == SQLITE_OK) {
             sqlite3_bind_int64(s, 1, new_next);
@@ -170,14 +169,12 @@ unlock:
     pthread_mutex_unlock(&v->mutex);
 }
 
-void pcache_get_page(
-    pcache_handle          handle,
-    const void            *id,
-    void                  *page_buffer,
-    pcache_get_page_error *error,
-    int                   *sqlite_error,
-    int                   *posix_error)
-{
+void pcache_get_page(pcache_handle          handle,
+                     const void            *id,
+                     void                  *page_buffer,
+                     pcache_get_page_error *error,
+                     int                   *sqlite_error,
+                     int                   *posix_error) {
     SET_ERR(error, PCACHE_GET_PAGE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -215,12 +212,7 @@ unlock:
     pthread_mutex_unlock(&v->mutex);
 }
 
-bool pcache_check_page(
-    pcache_handle            handle,
-    const void              *id,
-    pcache_check_page_error *error,
-    int                     *sqlite_error)
-{
+bool pcache_check_page(pcache_handle handle, const void *id, pcache_check_page_error *error, int *sqlite_error) {
     SET_ERR(error, PCACHE_CHECK_PAGE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
 
@@ -246,15 +238,13 @@ bool pcache_check_page(
     return found;
 }
 
-void pcache_delete_page(
-    pcache_handle             handle,
-    const void               *id,
-    bool                      wipe_data_file,
-    bool                      durable,
-    pcache_delete_page_error *error,
-    int                      *sqlite_error,
-    int                      *posix_error)
-{
+void pcache_delete_page(pcache_handle             handle,
+                        const void               *id,
+                        bool                      wipe_data_file,
+                        bool                      durable,
+                        pcache_delete_page_error *error,
+                        int                      *sqlite_error,
+                        int                      *posix_error) {
     SET_ERR(error, PCACHE_DELETE_PAGE_OK);
     SET_ERR(sqlite_error, SQLITE_OK);
     SET_ERR(posix_error, 0);
@@ -289,8 +279,7 @@ void pcache_delete_page(
         }
 
         sqlite3_stmt *s;
-        rc = sqlite3_prepare_v2(v->db, "UPDATE pages SET id_hash=NULL,id=NULL WHERE rowid=?",
-                                -1, &s, NULL);
+        rc = sqlite3_prepare_v2(v->db, "UPDATE pages SET id_hash=NULL,id=NULL WHERE rowid=?", -1, &s, NULL);
         if (rc == SQLITE_OK) {
             sqlite3_bind_int64(s, 1, rowid);
             rc = sqlite3_step(s);
@@ -323,8 +312,7 @@ void pcache_delete_page(
         off_t    byte_offset = (off_t)(rowid - 1) * v->config.page_size;
         uint8_t *zeros       = calloc(1, v->config.page_size);
         if (zeros) {
-            if (pwrite(v->data_fd, zeros, v->config.page_size, byte_offset) !=
-                (ssize_t)v->config.page_size) {
+            if (pwrite(v->data_fd, zeros, v->config.page_size, byte_offset) != (ssize_t)v->config.page_size) {
                 SET_ERR(posix_error, errno);
                 SET_ERR(error, PCACHE_DELETE_PAGE_IO_ERROR);
             }
