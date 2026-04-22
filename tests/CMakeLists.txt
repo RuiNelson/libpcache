@@ -15,5 +15,9 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang")
 endif()
 
 add_executable(pcache_test test_pcache.c)
-target_link_libraries(pcache_test pcache)
+target_link_libraries(pcache_test pcache ${SQLITE3_LIBRARIES})
 add_test(NAME pcache_test COMMAND pcache_test)
+
+add_executable(benchmark_pcache benchmark_pcache.c)
+target_link_libraries(benchmark_pcache pcache)
+add_test(NAME benchmark_pcache COMMAND benchmark_pcache)
