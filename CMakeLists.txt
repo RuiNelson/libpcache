@@ -39,12 +39,17 @@ target_link_libraries(pcache ${SQLITE3_LIBRARIES} xxHash::xxhash)
 set_target_properties(pcache PROPERTIES
     VERSION 1.0.0
     SOVERSION 1
-    PUBLIC_HEADER "${PUBLIC_HEADERS}"
 )
 
 install(TARGETS pcache
     LIBRARY DESTINATION lib
-    PUBLIC_HEADER DESTINATION include
+)
+
+install(FILES
+    include/libpcache.h
+    include/libpcache_errors.h
+    include/module.modulemap
+    DESTINATION include
 )
 
 enable_testing()
