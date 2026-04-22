@@ -32,7 +32,7 @@
 #define PCACHE_CODE_CREATE_INVALID_ARGUMENT           1000
 #define PCACHE_CODE_CREATE_FILE_EXISTS                1001
 #define PCACHE_CODE_OPEN_NOT_FOUND                    1002
-#define PCACHE_CODE_OPEN_TOO_MANY_HANDLES             1003
+#define PCACHE_CODE_OPEN_OUT_OF_MEMORY                1003
 #define PCACHE_CODE_OPEN_CORRUPT                      1004
 #define PCACHE_CODE_PUT_PAGE_CAPACITY_EXCEEDED        1005
 #define PCACHE_CODE_PUT_PAGE_DUPLICATE_ID             1006
@@ -61,7 +61,8 @@ typedef enum pcache_open_error {
     PCACHE_OPEN_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR,   /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_OPEN_CORRUPT      = PCACHE_CODE_OPEN_CORRUPT, /**< The index database is missing required metadata or has an
                                                             unsupported schema version. */
-    PCACHE_OPEN_TOO_MANY_HANDLES = PCACHE_CODE_OPEN_TOO_MANY_HANDLES, /**< The per-process handle table is full. */
+    PCACHE_OPEN_OUT_OF_MEMORY =
+        PCACHE_CODE_OPEN_OUT_OF_MEMORY, /**< Memory allocation failed while growing the handle table. */
 } pcache_open_error;
 
 /** Outcome of ::pcache_close. */

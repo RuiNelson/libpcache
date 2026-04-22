@@ -165,7 +165,7 @@ pcache_handle pcache_open(const pcache_file_pair *paths,
 
     pcache_volume *v = alloc_slot();
     if (!v) {
-        SET_ERR(error, PCACHE_OPEN_TOO_MANY_HANDLES);
+        SET_ERR(error, PCACHE_OPEN_OUT_OF_MEMORY);
         return 0;
     }
 

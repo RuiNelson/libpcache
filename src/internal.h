@@ -11,7 +11,6 @@
 
 /* ── Constants ── */
 
-#define PCACHE_MAX_HANDLES    64
 #define PCACHE_SCHEMA_VERSION 1
 #define PCACHE_FL_CHUNK       64 /* initial free-list capacity */
 

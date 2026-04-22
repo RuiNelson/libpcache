@@ -119,7 +119,7 @@ The interface is exposed through a single primary header (`libpcache.h`), which 
 
 ### General Conventions
 
-**Descriptor model.** Each open volume is identified by a positive integer, analogous to a POSIX file descriptor. The value zero is reserved to signal failure at open time; any strictly positive value represents a valid descriptor, which must be supplied in all subsequent operations on the volume.
+**Descriptor model.** Each open volume is identified by a positive integer, analogous to a POSIX file descriptor. The value zero is reserved to signal failure at open time; any strictly positive value represents a valid descriptor, which must be supplied in all subsequent operations on the volume. There is no fixed limit on the number of simultaneously open handles; the internal table grows dynamically as needed.
 
 **Error propagation.** Public functions do not use their return value to signal operation-level failure. Instead, they accept as a final argument a pointer to a function-specific error enumeration, named `pcache_<function>_error`, into which the outcome of the operation is recorded. Each function therefore exposes only the error conditions it can actually produce, avoiding the conflation of unrelated failure modes into a single catch-all type. When a function may fail due to errors originating in underlying subsystems — typically the SQLite engine or POSIX system calls —, additional pointers are provided, one per possible error source, allowing the caller to inspect the original error code without ambiguity. Any of these pointers may be `NULL` if the caller does not wish to collect the corresponding information.
 
