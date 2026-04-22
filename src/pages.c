@@ -156,7 +156,7 @@ void pcache_put_page(pcache_handle          handle,
     if (do_insert)
         v->row_count++;
     if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO && !do_insert)
-        v->fifo_next = (target_rowid % (int64_t)v->config.max_pages) + 1;
+        v->fifo_next = (v->fifo_next % (int64_t)v->config.max_pages) + 1;
 
     if (durable && error && *error == PCACHE_PUT_PAGE_OK) {
         if (!do_sync(v)) {

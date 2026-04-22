@@ -57,7 +57,7 @@ void pcache_create(const pcache_file_pair     *paths,
         SET_ERR(error, PCACHE_CREATE_SQLITE_ERROR);
         close(data_fd);
         unlink(paths->data_path);
-        close(db_fd);
+        unlink(paths->database_path);
         sqlite3_close(db);
         return;
     }
@@ -232,11 +232,19 @@ pcache_handle pcache_open(const pcache_file_pair *paths,
     /* ── FIFO cursor ── */
     if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
         sqlite3_stmt *s;
-        if (sqlite3_prepare_v2(v->db, "SELECT next_rowid FROM fifo_cursor", -1, &s, NULL) == SQLITE_OK) {
-            if (sqlite3_step(s) == SQLITE_ROW)
-                v->fifo_next = sqlite3_column_int64(s, 0);
-            sqlite3_finalize(s);
+        int           rc = sqlite3_prepare_v2(v->db, "SELECT next_rowid FROM fifo_cursor", -1, &s, NULL);
+        if (rc != SQLITE_OK) {
+            SET_ERR(error, PCACHE_OPEN_CORRUPT);
+            goto fail;
         }
+        rc = sqlite3_step(s);
+        if (rc != SQLITE_ROW) {
+            sqlite3_finalize(s);
+            SET_ERR(error, PCACHE_OPEN_CORRUPT);
+            goto fail;
+        }
+        v->fifo_next = sqlite3_column_int64(s, 0);
+        sqlite3_finalize(s);
     }
 
     /* ── Preload free list (FIXED only) ── */

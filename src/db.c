@@ -62,7 +62,7 @@ bool db_meta_read_str(sqlite3 *db, const char *key, char *out, size_t max_len) {
     if (sqlite3_step(s) == SQLITE_ROW) {
         const void *b = sqlite3_column_blob(s, 0);
         int         n = sqlite3_column_bytes(s, 0);
-        if (b && n > 0 && (size_t)n < max_len) {
+        if (b && n > 0 && (size_t)n <= max_len) {
             memcpy(out, b, n);
             ok = true;
         }

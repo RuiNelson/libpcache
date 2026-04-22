@@ -145,7 +145,44 @@ void pcache_defragment(pcache_handle            handle,
 cleanup_nulls:
     /* Remove all remaining NULL rows and reset in-memory state. */
     {
-        int rc = db_exec(v->db, "DELETE FROM pages WHERE id_hash IS NULL");
+        int rc = db_exec(v->db, "BEGIN IMMEDIATE");
+        if (rc != SQLITE_OK) {
+            SET_ERR(sqlite_error, rc);
+            SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
+            goto unlock;
+        }
+        rc = db_exec(v->db, "DELETE FROM pages WHERE id_hash IS NULL");
+        if (rc != SQLITE_OK) {
+            SET_ERR(sqlite_error, rc);
+            SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
+            db_exec(v->db, "ROLLBACK");
+            goto unlock;
+        }
+
+        /* Reset FIFO cursor to the slot immediately after the last live page. */
+        if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
+            int64_t       new_next = (int64_t)((live_cnt % v->config.max_pages) + 1);
+            sqlite3_stmt *s;
+            rc = sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &s, NULL);
+            if (rc == SQLITE_OK) {
+                sqlite3_bind_int64(s, 1, new_next);
+                rc = sqlite3_step(s);
+                if (rc == SQLITE_DONE)
+                    rc = SQLITE_OK;
+                sqlite3_finalize(s);
+            }
+            if (rc == SQLITE_OK) {
+                v->fifo_next = new_next;
+            }
+            if (rc != SQLITE_OK) {
+                SET_ERR(sqlite_error, rc);
+                SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
+                db_exec(v->db, "ROLLBACK");
+                goto unlock;
+            }
+        }
+
+        rc = db_exec(v->db, "COMMIT");
         if (rc != SQLITE_OK) {
             SET_ERR(sqlite_error, rc);
             SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
@@ -155,18 +192,6 @@ cleanup_nulls:
 
     v->row_count = live_cnt;
     rv_free(&v->free_list); /* no free slots remain after full compaction */
-
-    /* Reset FIFO cursor to the slot immediately after the last live page. */
-    if (v->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
-        int64_t new_next = (int64_t)((live_cnt % v->config.max_pages) + 1);
-        v->fifo_next     = new_next;
-        sqlite3_stmt *s;
-        if (sqlite3_prepare_v2(v->db, "UPDATE fifo_cursor SET next_rowid=?", -1, &s, NULL) == SQLITE_OK) {
-            sqlite3_bind_int64(s, 1, new_next);
-            sqlite3_step(s);
-            sqlite3_finalize(s);
-        }
-    }
 
     if (shrink_file) {
         off_t new_size = (off_t)live_cnt * v->config.page_size;
