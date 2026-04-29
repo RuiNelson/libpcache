@@ -1,37 +1,30 @@
 # libpcache
 
-A library for storing fixed-size pages on disk, each identified by a binary key.
+Fast, reliable, persistent storage for fixed-size pages — identified by any binary key you choose.
 
-A **volume** is made up of two files: a data file that holds the raw page bytes, and a SQLite database that maps keys to their location in the data file. All functions are thread-safe.
+A **volume** is two files working as one: a data file that holds the raw page bytes, and a SQLite index that maps every key to its exact location. Every operation is thread-safe and fully atomic.
 
 ## Main Use Cases
 
-You can use this library for:
-
-- Storing fixed-size chunks of data on disk, looked up by a binary key.
-- Building a cache that automatically evicts old entries when it gets full (circular buffer).
-
-You should not use this library for:
-
-- Anything that needs SQL queries or relational data.
-- Very small datasets where having two files on disk is too much overhead.
+- Store fixed-size chunks of data on disk and retrieve them instantly by binary key.
+- Build a self-managing cache that evicts old entries automatically when it gets full.
 
 ## Main Features
 
 ### Two Capacity Policies
 
-Choose at creation time how the volume behaves when it gets full:
+Pick the policy that suits your workload at creation time:
 
-- **FIXED** — writes up to a `max_pages` limit.
-- **FIFO** — writes beyond `max_pages` automatically evict the oldest page (circular buffer). No explicit deletes are needed to keep the volume from filling up.
+- **FIXED** — the volume holds up to `max_pages` pages. Deleted slots are recycled immediately for the next write.
+- **FIFO** — the volume acts as a **circular buffer**. When full, the oldest page is evicted automatically to make room for the new one.
 
 ### Elastic
 
-You can grow or shrink a volume at any time with `pcache_set_max_pages`. Growing always works. When shrinking a FIXED volume, any live pages that sit beyond the new limit are automatically moved into free slots — no manual defragmentation needed. The operation only fails if the total number of live pages exceeds the new limit (i.e. there is simply no room for them).
+Resize a volume at any time with `pcache_set_max_pages`. Growing is always instant. When shrinking a FIXED volume, pages that sit beyond the new limit are moved into free slots automatically.
 
 ### Defragmentable
 
-On FIXED volumes, deleted slots leave gaps in the data file. Call `pcache_defragment` to move all live pages to the front and optionally truncate the file, reclaiming the wasted space. A progress callback lets you track or cancel the operation at any point — the volume stays consistent whether you cancel or not.
+Over time, deletes leave gaps in the data file. One call to `pcache_defragment` packs all live pages to the front and optionally trims the file down to its minimum size. The task can be stopped at any time via a callback.
 
 ## Starter Cookbook
 
@@ -103,49 +96,49 @@ done:
 
 | Function | Description |
 |---|---|
-| `pcache_create` | Create a new volume (two files) on disk. |
-| `pcache_open` | Open an existing volume; returns a handle on success. |
-| `pcache_close` | Close a volume and free all resources. |
+| `pcache_create` | Create a volume. |
+| `pcache_open` | Open a volume. |
+| `pcache_close` | Close a volume. |
 
 ### Introspection
 
 | Function | Description |
 |---|---|
-| `pcache_inspect_configuration` | Get the configuration the volume was created with. |
-| `pcache_inspect_page_count` | Get how many pages are used and how many slots are free. |
+| `pcache_inspect_configuration` | Read the volume configuration. |
+| `pcache_inspect_page_count` | Get used and free page counts. |
 
 ### Single-Page Operations
 
 | Function | Description |
 |---|---|
-| `pcache_put_page` | Write one page. |
-| `pcache_get_page` | Read one page. |
-| `pcache_check_page` | Check if a page exists (does not read the data file). |
-| `pcache_delete_page` | Delete one page; does nothing if the key is not found. |
+| `pcache_put_page` | Write a page. |
+| `pcache_get_page` | Read a page. |
+| `pcache_check_page` | Check if a page exists. |
+| `pcache_delete_page` | Delete a page. |
 
 ### Bulk Operations
 
 | Function | Description |
 |---|---|
-| `pcache_put_pages` | Write many pages in one atomic operation. |
-| `pcache_get_pages` | Read many pages; fails if any key is missing. |
-| `pcache_check_pages` | Check which of many pages exist. |
-| `pcache_delete_pages` | Delete many pages at once; missing keys are ignored. |
+| `pcache_put_pages` | Write many pages atomically. |
+| `pcache_get_pages` | Read many pages. |
+| `pcache_check_pages` | Check which pages exist. |
+| `pcache_delete_pages` | Delete many pages. |
 | `pcache_put_pages_with_counter` | Write many pages with auto-generated keys. See [README_COUNTER.md](README_COUNTER.md). |
 | `pcache_get_pages_with_counter` | Read many pages with auto-generated keys. |
 | `pcache_check_pages_with_counter` | Check many pages with auto-generated keys. |
 | `pcache_delete_pages_with_counter` | Delete many pages with auto-generated keys. |
-| `pcache_get_pages_range` | Read all pages whose key falls in a range, in order. |
-| `pcache_check_pages_range` | Count pages whose key falls in a range. |
-| `pcache_delete_pages_range` | Delete all pages whose key falls in a range. |
+| `pcache_get_pages_range` | Read all pages in a key range. |
+| `pcache_check_pages_range` | Count pages in a key range. |
+| `pcache_delete_pages_range` | Delete all pages in a key range. |
 
 ### Maintenance
 
 | Function | Description |
 |---|---|
-| `pcache_defragment` | Move all pages to the front of the data file to reclaim space (FIXED volumes only). |
-| `pcache_set_max_pages` | Change the maximum number of pages the volume can hold. |
-| `pcache_preallocate` | Reserve space in the index and/or data file up front. |
+| `pcache_defragment` | Pack live pages to the front of the data file. |
+| `pcache_set_max_pages` | Resize the volume capacity (enlarge/shrink). |
+| `pcache_preallocate` | Pre-allocate index and data file space. |
 
 ## Building Documentation
 
