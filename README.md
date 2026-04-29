@@ -156,6 +156,10 @@ Convenient, easy-to-use APIs for operating on many pages at once — atomically 
 | `pcache_set_max_pages` | Resize the volume capacity (enlarge/shrink). |
 | `pcache_preallocate` | Pre-allocate index and data file space. |
 
+### Interactive REPL
+
+A command-line utility for exploring and testing volumes interactively. See [repl/README.md](repl/README.md).
+
 ## Building Documentation
 
 Install [Doxygen](https://www.doxygen.nl) and run:
