@@ -17,11 +17,28 @@ static void put_indexed(pcache_handle handle, uint32_t index) {
     pcache_put_page(handle, id, page, false, true, NULL, NULL, NULL);
 }
 
+static void delete_indexed(pcache_handle handle, uint32_t index) {
+    unsigned char id[ID_SIZE];
+    make_id_with_index(id, ID_SIZE, index);
+    pcache_delete_page(handle, id, false, true, NULL, NULL, NULL);
+}
+
 static bool exists_indexed(pcache_handle handle, uint32_t index) {
     unsigned char      id[ID_SIZE];
     pcache_check_error check_error = (pcache_check_error)-1;
     make_id_with_index(id, ID_SIZE, index);
     return pcache_check_page(handle, id, &check_error, NULL);
+}
+
+static bool data_matches_indexed(pcache_handle handle, uint32_t index) {
+    unsigned char id[ID_SIZE], expected[PAGE_SIZE], actual[PAGE_SIZE];
+    make_id_with_index(id, ID_SIZE, index);
+    make_page_with_index(expected, PAGE_SIZE, index);
+    pcache_get_error get_error = (pcache_get_error)-1;
+    pcache_get_page(handle, id, actual, &get_error, NULL, NULL);
+    if (get_error != PCACHE_GET_OK)
+        return false;
+    return memcmp(expected, actual, PAGE_SIZE) == 0;
 }
 
 tstsuite("elasticity - grow and shrink") {
@@ -56,7 +73,7 @@ tstsuite("elasticity - grow and shrink") {
         tstcheck(put_error == PCACHE_PUT_OK, "post-grow put OK");
 
         pcache_inspect_configuration_error config_error = (pcache_inspect_configuration_error)-1;
-        pcache_configuration           cfg          = pcache_inspect_configuration(handle, &config_error);
+        pcache_configuration               cfg          = pcache_inspect_configuration(handle, &config_error);
         tstcheck(cfg.max_pages == 8, "max_pages reflects new value");
 
         pcache_close(handle, NULL, NULL, NULL);
@@ -90,7 +107,7 @@ tstsuite("elasticity - grow and shrink") {
         test_paths_cleanup(&paths);
     }
 
-    tstcase("FIXED shrink that would discard live pages fails") {
+    tstcase("FIXED shrink fails when total live pages exceed new limit") {
         test_paths paths;
         test_paths_init(&paths, "elastic_fixed_shrink_discard");
 
@@ -102,20 +119,74 @@ tstsuite("elasticity - grow and shrink") {
         };
         pcache_handle handle = make_volume_and_open(&paths, &config);
 
-        /* Fill all 8 slots so a shrink to 4 would discard live pages at slots 5..8. */
+        /* 8 live pages cannot fit in 4 slots — must fail. */
         for (uint32_t i = 0; i < 8; i++)
             put_indexed(handle, i);
 
         pcache_set_max_pages_error shrink_error = (pcache_set_max_pages_error)-1;
         pcache_set_max_pages(handle, 4, true, &shrink_error, NULL, NULL);
-        tstcheck(shrink_error == PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES, "FIXED shrink rejects when discard required");
+        tstcheck(shrink_error == PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES,
+                 "FIXED shrink rejects when total live > new_max_pages");
 
-        /* All 8 ids must still be present. */
+        /* All 8 pages must still be intact. */
         bool all_present = true;
         for (uint32_t i = 0; i < 8; i++)
             if (!exists_indexed(handle, i))
                 all_present = false;
         tstcheck(all_present, "no pages lost after rejected shrink");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("FIXED shrink auto-relocates live pages beyond new limit") {
+        test_paths paths;
+        test_paths_init(&paths, "elastic_fixed_shrink_reloc");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = 8,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        /* Fill all 8 slots (indices 0..7 → ROWIDs 1..8). */
+        for (uint32_t i = 0; i < 8; i++)
+            put_indexed(handle, i);
+
+        /* Free ROWIDs 4 and 5 by deleting indices 3 and 4.
+         * Live pages remain at ROWIDs 1,2,3,6,7,8 (6 total). */
+        delete_indexed(handle, 3);
+        delete_indexed(handle, 4);
+
+        /* Shrink to 6: pages at ROWIDs 7 and 8 must be auto-relocated
+         * into the free slots at ROWIDs 4 and 5. Total live (6) fits. */
+        pcache_set_max_pages_error shrink_error = (pcache_set_max_pages_error)-1;
+        pcache_set_max_pages(handle, 6, true, &shrink_error, NULL, NULL);
+        tstcheck(shrink_error == PCACHE_SET_MAX_PAGES_OK, "FIXED shrink with auto-relocation OK");
+
+        /* Deleted pages must be gone. */
+        tstcheck(!exists_indexed(handle, 3), "deleted page 3 absent after shrink");
+        tstcheck(!exists_indexed(handle, 4), "deleted page 4 absent after shrink");
+
+        /* Relocated pages must be present and their data must be intact. */
+        tstcheck(data_matches_indexed(handle, 0), "page 0 data intact after shrink");
+        tstcheck(data_matches_indexed(handle, 1), "page 1 data intact after shrink");
+        tstcheck(data_matches_indexed(handle, 2), "page 2 data intact after shrink");
+        tstcheck(data_matches_indexed(handle, 5), "page 5 data intact after shrink");
+        tstcheck(data_matches_indexed(handle, 6), "page 6 data intact (relocated)");
+        tstcheck(data_matches_indexed(handle, 7), "page 7 data intact (relocated)");
+
+        /* Volume must report max_pages = 6 and 6 used slots. */
+        pcache_inspect_configuration_error cfg_err = (pcache_inspect_configuration_error)-1;
+        pcache_configuration               cfg     = pcache_inspect_configuration(handle, &cfg_err);
+        tstcheck(cfg.max_pages == 6, "max_pages updated to 6");
+
+        pcache_inspect_page_count_error count_err = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts    = pcache_inspect_page_count(handle, &count_err, NULL);
+        tstcheck(counts.used == 6, "6 pages live after shrink");
+        tstcheck(counts.free == 0, "no free slots after shrink");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);
@@ -127,10 +198,10 @@ tstsuite("elasticity - grow and shrink") {
 
         const uint32_t       initial_max = 16;
         pcache_configuration config      = {
-                 .capacity_policy = PCACHE_CAPACITY_FIFO,
-                 .page_size       = PAGE_SIZE,
-                 .max_pages       = initial_max,
-                 .id_size         = ID_SIZE,
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = initial_max,
+            .id_size         = ID_SIZE,
         };
         pcache_handle handle = make_volume_and_open(&paths, &config);
 
@@ -147,7 +218,7 @@ tstsuite("elasticity - grow and shrink") {
         tstcheck(file_size(paths.data_path) == expected_size, "FIFO data file truncated to new size");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used <= 8, "no more than new max_pages live");
 
         pcache_close(handle, NULL, NULL, NULL);

@@ -396,30 +396,230 @@ void pcache_set_max_pages(pcache_handle               handle,
 
     if (new_max_pages < old_max) {
         if (volume->config.capacity_policy == PCACHE_CAPACITY_FIXED) {
-            /* Fail if any live page resides beyond the new limit. */
-            sqlite3_stmt *s;
-            int64_t       beyond = 0;
-            int           rc     = sqlite3_prepare_v2(
-                volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?", -1, &s, NULL);
-            if (rc == SQLITE_OK)
-                rc = sqlite3_bind_int64(s, 1, (int64_t)new_max_pages);
-            if (rc == SQLITE_OK) {
-                if (sqlite3_step(s) == SQLITE_ROW)
-                    beyond = sqlite3_column_int64(s, 0);
-            }
-            if (s)
-                sqlite3_finalize(s);
+            /* Count live pages beyond the new limit. */
+            sqlite3_stmt *stmt;
+            int64_t       live_beyond = 0;
+            int           rc          = sqlite3_prepare_v2(
+                volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?", -1, &stmt, NULL);
+            if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+            if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+                live_beyond = sqlite3_column_int64(stmt, 0);
+            sqlite3_finalize(stmt);
             if (rc != SQLITE_OK) {
                 SET_ERR(sqlite_error, rc);
                 SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
                 goto unlock;
             }
-            if (beyond > 0) {
-                SET_ERR(error, PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES);
-                goto unlock;
-            }
 
-            /* Remove NULL rows beyond the new limit. */
+            if (live_beyond > 0) {
+                /* Fail only when the total live count exceeds the new limit. */
+                int64_t total_live = 0;
+                rc = sqlite3_prepare_v2(
+                    volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL", -1, &stmt, NULL);
+                if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
+                    total_live = sqlite3_column_int64(stmt, 0);
+                sqlite3_finalize(stmt);
+                if (rc != SQLITE_OK) {
+                    SET_ERR(sqlite_error, rc);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
+                    goto unlock;
+                }
+                if (total_live > (int64_t)new_max_pages) {
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES);
+                    goto unlock;
+                }
+
+                /* Collect destination slots: NULL rows within [1, new_max_pages]. */
+                int64_t *dst_slots = malloc((size_t)live_beyond * sizeof *dst_slots);
+                if (!dst_slots) {
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY);
+                    goto unlock;
+                }
+                size_t dst_cnt = 0;
+
+                rc = sqlite3_prepare_v2(volume->db,
+                    "SELECT rowid FROM pages WHERE id_hash IS NULL AND rowid <= ? ORDER BY rowid ASC",
+                    -1, &stmt, NULL);
+                if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+                if (rc == SQLITE_OK) {
+                    while (sqlite3_step(stmt) == SQLITE_ROW && dst_cnt < (size_t)live_beyond)
+                        dst_slots[dst_cnt++] = sqlite3_column_int64(stmt, 0);
+                }
+                sqlite3_finalize(stmt);
+                if (rc != SQLITE_OK) {
+                    free(dst_slots);
+                    SET_ERR(sqlite_error, rc);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
+                    goto unlock;
+                }
+
+                /* Collect source pages: live rows beyond new_max_pages. */
+                typedef struct {
+                    int64_t rowid;
+                    int64_t id_hash;
+                    void   *id_blob;
+                    int     id_len;
+                } reloc_src_t;
+
+                reloc_src_t *sources = malloc((size_t)live_beyond * sizeof *sources);
+                if (!sources) {
+                    free(dst_slots);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY);
+                    goto unlock;
+                }
+                size_t src_cnt = 0;
+
+                rc = sqlite3_prepare_v2(volume->db,
+                    "SELECT rowid, id_hash, id FROM pages WHERE id_hash IS NOT NULL AND rowid > ? ORDER BY rowid ASC",
+                    -1, &stmt, NULL);
+                if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+                if (rc == SQLITE_OK) {
+                    while (sqlite3_step(stmt) == SQLITE_ROW && src_cnt < (size_t)live_beyond) {
+                        sources[src_cnt].rowid   = sqlite3_column_int64(stmt, 0);
+                        sources[src_cnt].id_hash = sqlite3_column_int64(stmt, 1);
+                        const void *blob     = sqlite3_column_blob(stmt, 2);
+                        int         blob_len = sqlite3_column_bytes(stmt, 2);
+                        sources[src_cnt].id_blob = NULL;
+                        sources[src_cnt].id_len  = 0;
+                        if (blob && blob_len > 0) {
+                            sources[src_cnt].id_blob = malloc(blob_len);
+                            if (!sources[src_cnt].id_blob) {
+                                sqlite3_finalize(stmt);
+                                for (size_t k = 0; k < src_cnt; k++)
+                                    free(sources[k].id_blob);
+                                free(sources);
+                                free(dst_slots);
+                                SET_ERR(error, PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY);
+                                goto unlock;
+                            }
+                            memcpy(sources[src_cnt].id_blob, blob, blob_len);
+                            sources[src_cnt].id_len = blob_len;
+                        }
+                        src_cnt++;
+                    }
+                }
+                sqlite3_finalize(stmt);
+                if (rc != SQLITE_OK) {
+                    for (size_t k = 0; k < src_cnt; k++)
+                        free(sources[k].id_blob);
+                    free(sources);
+                    free(dst_slots);
+                    SET_ERR(sqlite_error, rc);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
+                    goto unlock;
+                }
+
+                /* Copy page data for each (src, dst) pair. */
+                void *buf = malloc(volume->config.page_size);
+                if (!buf) {
+                    for (size_t k = 0; k < src_cnt; k++)
+                        free(sources[k].id_blob);
+                    free(sources);
+                    free(dst_slots);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY);
+                    goto unlock;
+                }
+
+                bool io_ok = true;
+                for (size_t i = 0; i < src_cnt && io_ok; i++) {
+                    off_t src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
+                    off_t dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
+                    if (pread(volume->fd, buf, volume->config.page_size, src_off) != (ssize_t)volume->config.page_size ||
+                        pwrite(volume->fd, buf, volume->config.page_size, dst_off) != (ssize_t)volume->config.page_size) {
+                        SET_ERR(posix_error, errno);
+                        SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
+                        io_ok = false;
+                    }
+                }
+                free(buf);
+
+                if (!io_ok) {
+                    for (size_t k = 0; k < src_cnt; k++)
+                        free(sources[k].id_blob);
+                    free(sources);
+                    free(dst_slots);
+                    goto unlock;
+                }
+
+                /* Update the index atomically: all relocations in one transaction. */
+                int tx_rc = db_exec(volume->db, "BEGIN IMMEDIATE");
+                if (tx_rc != SQLITE_OK) {
+                    for (size_t k = 0; k < src_cnt; k++)
+                        free(sources[k].id_blob);
+                    free(sources);
+                    free(dst_slots);
+                    SET_ERR(sqlite_error, tx_rc);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
+                    goto unlock;
+                }
+
+                sqlite3_stmt *del_stmt  = NULL;
+                sqlite3_stmt *ins_stmt  = NULL;
+                sqlite3_stmt *null_stmt = NULL;
+
+                tx_rc = sqlite3_prepare_v2(volume->db,
+                    "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &del_stmt, NULL);
+                if (tx_rc == SQLITE_OK)
+                    tx_rc = sqlite3_prepare_v2(volume->db,
+                        "INSERT INTO pages(rowid, id_hash, id) VALUES(?, ?, ?)", -1, &ins_stmt, NULL);
+                if (tx_rc == SQLITE_OK)
+                    tx_rc = sqlite3_prepare_v2(volume->db,
+                        "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &null_stmt, NULL);
+
+                for (size_t i = 0; i < src_cnt && tx_rc == SQLITE_OK; i++) {
+                    sqlite3_reset(del_stmt);
+                    sqlite3_clear_bindings(del_stmt);
+                    sqlite3_bind_int64(del_stmt, 1, dst_slots[i]);
+                    int step_rc = sqlite3_step(del_stmt);
+                    if (step_rc != SQLITE_DONE)
+                        tx_rc = sqlite3_errcode(volume->db);
+
+                    if (tx_rc == SQLITE_OK) {
+                        sqlite3_reset(ins_stmt);
+                        sqlite3_clear_bindings(ins_stmt);
+                        sqlite3_bind_int64(ins_stmt, 1, dst_slots[i]);
+                        sqlite3_bind_int64(ins_stmt, 2, sources[i].id_hash);
+                        if (sources[i].id_blob && sources[i].id_len > 0)
+                            sqlite3_bind_blob(ins_stmt, 3, sources[i].id_blob, sources[i].id_len, SQLITE_STATIC);
+                        else
+                            sqlite3_bind_null(ins_stmt, 3);
+                        step_rc = sqlite3_step(ins_stmt);
+                        if (step_rc != SQLITE_DONE && step_rc != SQLITE_ROW)
+                            tx_rc = sqlite3_errcode(volume->db);
+                    }
+
+                    if (tx_rc == SQLITE_OK) {
+                        sqlite3_reset(null_stmt);
+                        sqlite3_clear_bindings(null_stmt);
+                        sqlite3_bind_int64(null_stmt, 1, sources[i].rowid);
+                        step_rc = sqlite3_step(null_stmt);
+                        if (step_rc != SQLITE_DONE)
+                            tx_rc = sqlite3_errcode(volume->db);
+                    }
+                }
+
+                sqlite3_finalize(del_stmt);
+                sqlite3_finalize(ins_stmt);
+                sqlite3_finalize(null_stmt);
+
+                if (tx_rc == SQLITE_OK)
+                    tx_rc = db_exec(volume->db, "COMMIT");
+                else
+                    db_exec(volume->db, "ROLLBACK");
+
+                for (size_t k = 0; k < src_cnt; k++)
+                    free(sources[k].id_blob);
+                free(sources);
+                free(dst_slots);
+
+                if (tx_rc != SQLITE_OK) {
+                    SET_ERR(sqlite_error, tx_rc);
+                    SET_ERR(error, PCACHE_SET_MAX_PAGES_SQLITE_ERROR);
+                    goto unlock;
+                }
+            } /* end if (live_beyond > 0) */
+
+            /* Remove all rows beyond the new limit (now all NULL after relocation). */
             {
                 int del_rc =
                     db_exec_bind_int64(volume->db, "DELETE FROM pages WHERE rowid > ?", (int64_t)new_max_pages);

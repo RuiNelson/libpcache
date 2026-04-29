@@ -162,7 +162,8 @@ pcache_configuration pcache_inspect_configuration(pcache_handle handle, pcache_i
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
  * @return Page counts, or an unspecified value on error.
  */
-pcache_page_count pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error *error, int *sqlite_error);
+pcache_page_count
+pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error *error, int *sqlite_error);
 
 /* ──────────── Page operations ──────────── */
 
@@ -607,12 +608,13 @@ void pcache_defragment(pcache_handle            handle,
 /**
  * @brief Adjust the maximum capacity of the volume.
  *
- * Growth is always permitted.  On @c PCACHE_CAPACITY_FIXED volumes, reduction fails
- * if any live page has a slot index beyond @p new_max_pages (@c PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES);
- * defragment first to consolidate live pages.  On @c PCACHE_CAPACITY_FIFO volumes,
- * reduction physically drops every row with @c ROWID > @p new_max_pages and truncates
- * the data file accordingly; this is not strictly oldest-first and may discard pages
- * that are not the oldest.
+ * Growth is always permitted.  On @c PCACHE_CAPACITY_FIXED volumes, any live pages
+ * that reside beyond @p new_max_pages are automatically moved into free slots within
+ * @c [1, new_max_pages]; the operation fails with @c PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES
+ * only when the total number of live pages exceeds @p new_max_pages.
+ * On @c PCACHE_CAPACITY_FIFO volumes, reduction physically drops every row with
+ * @c ROWID > @p new_max_pages and truncates the data file accordingly; this is not
+ * strictly oldest-first and may discard pages that are not the oldest.
  *
  * @param handle        Open volume descriptor.
  * @param new_max_pages New maximum page count; must be ≥ 1.
