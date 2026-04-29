@@ -221,7 +221,7 @@ pcache_handle pcache_open(
 );
 ```
 
-**Closing (`pcache_close`).** Releases the resources associated with a descriptor, orderly closing the connection to the index database and any underlying file descriptors.
+**Closing (`pcache_close`).** Releases the resources associated with a descriptor, orderly closing the connection to the index database and any underlying file descriptors. Both the data file and the SQLite database are fsync'd before the handles are closed, ensuring all data is persisted to stable storage.
 
 ```c
 void pcache_close(
@@ -604,6 +604,12 @@ void pcache_preallocate(
 - macOS and Linux.
 
 Supports systems where an int is 32 bits, 64 bits or more.
+
+## pcache_repl
+
+A read-eval-print loop (REPL) utility for interacting with libpcache volumes from the command line. It is built as a C++ executable that dynamically links against `libpcache` and uses the [Taywee/args](https://github.com/Taywee/args) library for argument parsing.
+
+Detailed documentation: [spec_repl.md](spec_repl.md)
 
 ## Future Work
 

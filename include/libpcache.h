@@ -21,6 +21,10 @@
 
 #include "libpcache_errors.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* ──────────── Types ──────────── */
 
 /**
@@ -133,6 +137,9 @@ pcache_handle pcache_open(const pcache_file_pair *paths, pcache_open_error *erro
 
 /**
  * @brief Close an open volume and release all associated resources.
+ *
+ * On return, the data file and index database are fsync'd before the handles
+ * are closed, ensuring all data is persisted to stable storage.
  *
  * @param handle       Descriptor returned by ::pcache_open.
  * @param error        Receives the operation outcome; may be @c NULL.
@@ -651,3 +658,7 @@ void pcache_preallocate(pcache_handle             handle,
                         pcache_preallocate_error *error,
                         int                      *sqlite_error,
                         int                      *posix_error);
+
+#ifdef __cplusplus
+}
+#endif
