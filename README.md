@@ -32,18 +32,12 @@ Over time, deletes leave gaps in the data file. One call to `pcache_defragment` 
 #include <string.h>
 #include "libpcache.h"
 
+#define PAGE_SIZE_32KB (32 * 1024)
+
+#define GIGABYTE (1024ULL*1024*1024)
+#define PAGE_COUNT_4GB ((4 * GIGABYTE) / PAGE_SIZE_32KB)
+
 int main(void) {
-    pcache_file_pair paths = {
-        .database_path = "my_volume.db",
-        .data_path     = "my_volume.dat",
-    };
-    pcache_configuration config = {
-        .capacity_policy = PCACHE_CAPACITY_FIXED,
-        .page_size       = 32768,   /* 32 KB */
-        .max_pages       = 131072,  /* 4 GB total */
-        .id_size         = 36,
-    };
-    pcache_create_error  create_err;
     pcache_open_error    open_err;
     pcache_put_error     put_err;
     pcache_get_error     get_err;
@@ -51,37 +45,57 @@ int main(void) {
     pcache_close_error   close_err;
     int                  sqlite_err;
     int                  posix_err;
-    unsigned char        id[36]       = {0};
-    unsigned char        data[32768]  = {0};
-    unsigned char        read_buf[32768];
+
+    unsigned char        id_buf[36]                 = {0};
+    unsigned char        write_buf[PAGE_SIZE_32KB]  = {0};
+    unsigned char        read_buf[PAGE_SIZE_32KB];
     pcache_handle        handle;
 
+create:
     /* Create a 4 GB volume with 32 KB pages and 36-byte keys.
      * Both files must not exist yet. */
+    pcache_file_pair paths = {
+        .database_path = "my_volume.db",
+        .data_path     = "my_volume.dat",
+    };
+    pcache_configuration config = {
+        .capacity_policy = PCACHE_CAPACITY_FIXED,
+        .page_size       = PAGE_SIZE_32KB,
+        .max_pages       = PAGE_COUNT_4GB,
+        .id_size         = 36,
+    };
+    pcache_create_error  create_err;
+
     pcache_create(&paths, &config, false, false, &create_err, &sqlite_err, &posix_err);
     if (create_err != PCACHE_CREATE_OK) return 1;
 
+open:
     /* Open the volume. */
     handle = pcache_open(&paths, &open_err, &sqlite_err, &posix_err);
     if (!handle) return 1;
 
-    /* Write a page. durable=true waits for the data to reach disk. */
-    memset(id,   0xAB, sizeof(id));
-    memset(data, 0x42, sizeof(data));
-    pcache_put_page(handle, id, data, /*fail_if_exists=*/false, /*durable=*/true,
+write:
+    /* Write a page. durable=true waits for the write_buf to reach disk. */
+    memset(id_buf,   0xAB, sizeof(id_buf));
+    memset(write_buf, 0x42, sizeof(write_buf));
+    pcache_put_page(handle, id_buf, write_buf, /*fail_if_exists=*/false, /*durable=*/true,
                     &put_err, &sqlite_err, &posix_err);
-    if (put_err != PCACHE_PUT_OK) goto done;
+    if (put_err != PCACHE_PUT_OK) return 1;
 
+read:
     /* Read the page back using the same key. */
-    pcache_get_page(handle, id, read_buf,
+    pcache_get_page(handle, id_buf, read_buf,
                     &get_err, &sqlite_err, &posix_err);
+    if (get_err != PCACHE_GET_OK) return 1;
 
+delete:
     /* Delete the page. wipe_data_file=false keeps the bytes on disk —
      * only the index entry is removed. */
-    pcache_delete_page(handle, id, /*wipe_data_file=*/false, /*durable=*/true,
+    pcache_delete_page(handle, id_buf, /*wipe_data_file=*/false, /*durable=*/true,
                        &del_err, &sqlite_err, &posix_err);
+    if (del_err != PCACHE_DELETE_OK) return 1;
 
-done:
+close:
     /* Close the volume. */
     pcache_close(handle,
                  &close_err, &sqlite_err, &posix_err);
@@ -117,6 +131,8 @@ done:
 | `pcache_delete_page` | Delete a page. |
 
 ### Bulk Operations
+
+Convenient, easy-to-use APIs for operating on many pages at once — atomically when needed.
 
 | Function | Description |
 |---|---|
