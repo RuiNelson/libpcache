@@ -4,6 +4,6 @@
 cd "$(dirname "$0")"
 
 echo "Formatting source files..."
-clang-format -i src/*.c include/*.h tests/*.c
+clang-format -i src/*.c src/*.h include/*.h tests/*.c tests/*.h
 
 echo "Done"

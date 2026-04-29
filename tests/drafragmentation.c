@@ -69,8 +69,8 @@ tstsuite("defragmentation") {
         for (size_t i = 0; i < ndelete; i++)
             delete_indexed(handle, to_delete[i]);
 
-        progress_recorder        recorder    = {0};
-        pcache_defragment_error  defrag_err  = (pcache_defragment_error)-1;
+        progress_recorder       recorder   = {0};
+        pcache_defragment_error defrag_err = (pcache_defragment_error)-1;
         pcache_defragment(handle, record_progress, &recorder, true, true, &defrag_err, NULL, NULL);
         tstcheck(defrag_err == PCACHE_DEFRAGMENT_OK, "defragment OK");
         tstcheck(recorder.reached_one, "progress reaches 1.0");
@@ -97,7 +97,7 @@ tstsuite("defragmentation") {
         tstcheck(file_size(paths.data_path) == expected_size, "data file truncated to live pages");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == nsurv, "used count matches number of survivors");
 
         pcache_close(handle, NULL, NULL, NULL);
@@ -163,10 +163,10 @@ tstsuite("defragmentation") {
         /* Snapshot which ids are live. */
         bool live_before[MAX_PAGES + 3];
         for (uint32_t i = 0; i < MAX_PAGES + 3; i++) {
-            unsigned char      id[ID_SIZE];
+            unsigned char id[ID_SIZE];
             make_id_with_index(id, ID_SIZE, i);
             pcache_check_error check_error = (pcache_check_error)-1;
-            live_before[i] = pcache_check_page(handle, id, &check_error, NULL);
+            live_before[i]                 = pcache_check_page(handle, id, &check_error, NULL);
         }
 
         progress_recorder       recorder   = {0};
@@ -179,7 +179,7 @@ tstsuite("defragmentation") {
         /* The same set of ids must still be live with identical contents. */
         bool same = true;
         for (uint32_t i = 0; i < MAX_PAGES + 3; i++) {
-            unsigned char      id[ID_SIZE];
+            unsigned char id[ID_SIZE];
             make_id_with_index(id, ID_SIZE, i);
             pcache_check_error check_error = (pcache_check_error)-1;
             bool               now         = pcache_check_page(handle, id, &check_error, NULL);

@@ -13,8 +13,8 @@ static int next_sequence(void) {
 
 void test_paths_init(test_paths *paths, const char *prefix) {
     int sequence = next_sequence();
-    snprintf(paths->database_path, sizeof(paths->database_path), "/tmp/pcache_%s_%d_%d.db", prefix, (int)getpid(),
-             sequence);
+    snprintf(
+        paths->database_path, sizeof(paths->database_path), "/tmp/pcache_%s_%d_%d.db", prefix, (int)getpid(), sequence);
     snprintf(paths->data_path, sizeof(paths->data_path), "/tmp/pcache_%s_%d_%d.dat", prefix, (int)getpid(), sequence);
 
     /* Make sure no leftover files trip pcache_create. */

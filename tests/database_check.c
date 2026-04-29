@@ -17,7 +17,7 @@
 
 /* Run a query and return the integer in the first column of the first row, or fail_value on error. */
 static long long query_int(sqlite3 *db, const char *sql, long long fail_value) {
-    sqlite3_stmt *stmt = NULL;
+    sqlite3_stmt *stmt   = NULL;
     long long     result = fail_value;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK)
         return fail_value;
@@ -189,10 +189,10 @@ tstsuite("database structure (direct SQLite inspection)") {
 
         bool offsets_match = true;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            sqlite3_int64 rowid     = sqlite3_column_int64(stmt, 0);
-            const void   *id_blob   = sqlite3_column_blob(stmt, 1);
-            int           id_blen   = sqlite3_column_bytes(stmt, 1);
-            off_t         offset    = (off_t)(rowid - 1) * PAGE_SIZE;
+            sqlite3_int64 rowid   = sqlite3_column_int64(stmt, 0);
+            const void   *id_blob = sqlite3_column_blob(stmt, 1);
+            int           id_blen = sqlite3_column_bytes(stmt, 1);
+            off_t         offset  = (off_t)(rowid - 1) * PAGE_SIZE;
             unsigned char data_buf[PAGE_SIZE];
             ssize_t       read_size = pread(data_fd, data_buf, PAGE_SIZE, offset);
             tstcheck(read_size == PAGE_SIZE, "pread returns full page");

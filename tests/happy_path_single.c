@@ -47,7 +47,7 @@ tstsuite("happy path - single page operations") {
         tstcheck(memcmp(page_in, page_out, PAGE_SIZE) == 0, "page content roundtrip matches");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(count_error == PCACHE_INSPECT_PAGE_COUNT_OK, "inspect_page_count OK");
         tstcheck(counts.used == 1, "used == 1");
         tstcheck(counts.free == MAX_PAGES - 1, "free == max_pages - 1");
@@ -178,7 +178,7 @@ tstsuite("happy path - single page operations") {
         tstcheck(open_error == PCACHE_OPEN_OK, "reopen OK");
 
         pcache_inspect_configuration_error config_error = (pcache_inspect_configuration_error)-1;
-        pcache_configuration           recovered    = pcache_inspect_configuration(handle, &config_error);
+        pcache_configuration               recovered    = pcache_inspect_configuration(handle, &config_error);
         tstcheck(config_error == PCACHE_INSPECT_CONFIGURATION_OK, "inspect_configuration OK");
         tstcheck(recovered.capacity_policy == PCACHE_CAPACITY_FIFO, "policy preserved");
         tstcheck(recovered.page_size == 512, "page_size preserved");

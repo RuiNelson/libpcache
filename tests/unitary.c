@@ -58,8 +58,8 @@ tstsuite("unit tests for pages_util helpers") {
         uint8_t     *ids   = calloc(count, ID_SIZE);
         tstcheck(ids != NULL, "alloc OK");
         for (size_t idx = 0; idx < count; idx++) {
-            uint8_t *entry = ids + idx * ID_SIZE;
-            uint32_t value = (uint32_t)idx;
+            uint8_t *entry     = ids + idx * ID_SIZE;
+            uint32_t value     = (uint32_t)idx;
             entry[ID_SIZE - 4] = (uint8_t)(value >> 24);
             entry[ID_SIZE - 3] = (uint8_t)(value >> 16);
             entry[ID_SIZE - 2] = (uint8_t)(value >> 8);
@@ -74,8 +74,8 @@ tstsuite("unit tests for pages_util helpers") {
         const size_t count = 1500;
         uint8_t     *ids   = calloc(count, ID_SIZE);
         for (size_t idx = 0; idx < count; idx++) {
-            uint8_t *entry = ids + idx * ID_SIZE;
-            uint32_t value = (uint32_t)idx;
+            uint8_t *entry     = ids + idx * ID_SIZE;
+            uint32_t value     = (uint32_t)idx;
             entry[ID_SIZE - 4] = (uint8_t)(value >> 24);
             entry[ID_SIZE - 3] = (uint8_t)(value >> 16);
             entry[ID_SIZE - 2] = (uint8_t)(value >> 8);
@@ -92,43 +92,50 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("validate_with_counter_args: valid arguments produce the documented counter offset") {
         size_t counter_offset = 999;
-        tstcheck(validate_with_counter_args(ID_SIZE, 1, 0, /*position*/ 0, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == true,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, 1, 0, /*position*/ 0, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == true,
                  "position 0 valid");
         tstcheck(counter_offset == ID_SIZE - 4, "counter_offset == id_size - 4 when position == 0");
 
-        tstcheck(validate_with_counter_args(ID_SIZE, 1, 0, /*position*/ ID_SIZE - 4, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == true,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, 1, 0, /*position*/ ID_SIZE - 4, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == true,
                  "position id_size-4 valid (counter at start)");
         tstcheck(counter_offset == 0, "counter_offset == 0 at boundary");
     }
 
     tstcase("validate_with_counter_args: position out of bounds rejected") {
         size_t counter_offset = 999;
-        tstcheck(validate_with_counter_args(ID_SIZE, 1, 0, /*position*/ ID_SIZE - 3, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == false,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, 1, 0, /*position*/ ID_SIZE - 3, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == false,
                  "position id_size-3 rejected (would overflow)");
-        tstcheck(validate_with_counter_args(ID_SIZE, 1, 0, /*position*/ ID_SIZE, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == false,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, 1, 0, /*position*/ ID_SIZE, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == false,
                  "position == id_size rejected");
-        tstcheck(validate_with_counter_args(ID_SIZE, 1, 0, /*position*/ UINT32_MAX, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == false,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, 1, 0, /*position*/ UINT32_MAX, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == false,
                  "position == UINT32_MAX rejected");
     }
 
     tstcase("validate_with_counter_args: counter overflow boundary") {
         size_t counter_offset = 0;
-        tstcheck(validate_with_counter_args(ID_SIZE, /*count*/ 1, /*start*/ UINT32_MAX, 0, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == true,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, /*count*/ 1, /*start*/ UINT32_MAX, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) ==
+                     true,
                  "start = UINT32_MAX, count = 1 -> exactly UINT32_MAX+1, valid");
-        tstcheck(validate_with_counter_args(ID_SIZE, /*count*/ 2, /*start*/ UINT32_MAX, 0, PCACHE_ENDIANNESS_BIG_ENDIAN,
-                                            &counter_offset) == false,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, /*count*/ 2, /*start*/ UINT32_MAX, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) ==
+                     false,
                  "start = UINT32_MAX, count = 2 -> exceeds UINT32_MAX+1, invalid");
-        tstcheck(validate_with_counter_args(ID_SIZE, /*count*/ UINT32_MAX, /*start*/ 0, 0,
-                                            PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == true,
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, /*count*/ UINT32_MAX, /*start*/ 0, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) ==
+                     true,
                  "start = 0, count = UINT32_MAX -> equals UINT32_MAX, valid");
-        tstcheck(validate_with_counter_args(ID_SIZE, /*count*/ (size_t)UINT32_MAX + 2u, /*start*/ 0, 0,
-                                            PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == false,
+        tstcheck(validate_with_counter_args(ID_SIZE,
+                                            /*count*/ (size_t)UINT32_MAX + 2u,
+                                            /*start*/ 0,
+                                            0,
+                                            PCACHE_ENDIANNESS_BIG_ENDIAN,
+                                            &counter_offset) == false,
                  "count > UINT32_MAX+1 invalid");
     }
 
@@ -148,9 +155,13 @@ tstsuite("unit tests for pages_util helpers") {
     /* ───────────────── build_with_counter_ids ───────────────── */
 
     tstcase("build_with_counter_ids: BIG_ENDIAN places MSB first") {
-        uint8_t base[8] = {0};
-        uint8_t *result = build_with_counter_ids(/*count*/ 1, /*id_size*/ 8, base, /*start*/ 0x12345678,
-                                                 /*counter_offset*/ 4, PCACHE_ENDIANNESS_BIG_ENDIAN);
+        uint8_t  base[8] = {0};
+        uint8_t *result  = build_with_counter_ids(/*count*/ 1,
+                                                  /*id_size*/ 8,
+                                                  base,
+                                                  /*start*/ 0x12345678,
+                                                  /*counter_offset*/ 4,
+                                                  PCACHE_ENDIANNESS_BIG_ENDIAN);
         tstcheck(result != NULL, "alloc OK");
         tstcheck(result[0] == 0 && result[1] == 0 && result[2] == 0 && result[3] == 0,
                  "bytes outside counter region untouched");
@@ -160,8 +171,8 @@ tstsuite("unit tests for pages_util helpers") {
     }
 
     tstcase("build_with_counter_ids: LITTLE_ENDIAN places LSB first") {
-        uint8_t base[8] = {0};
-        uint8_t *result = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_LITTLE_ENDIAN);
+        uint8_t  base[8] = {0};
+        uint8_t *result  = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_LITTLE_ENDIAN);
         tstcheck(result != NULL, "alloc OK");
         tstcheck(result[4] == 0x78 && result[5] == 0x56 && result[6] == 0x34 && result[7] == 0x12,
                  "LITTLE_ENDIAN counter encoded LSB->MSB");
@@ -169,8 +180,8 @@ tstsuite("unit tests for pages_util helpers") {
     }
 
     tstcase("build_with_counter_ids: NATIVE matches host byte order") {
-        uint8_t base[8] = {0};
-        uint8_t *result = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_NATIVE);
+        uint8_t  base[8] = {0};
+        uint8_t *result  = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_NATIVE);
         tstcheck(result != NULL, "alloc OK");
         if (host_is_little_endian()) {
             tstcheck(result[4] == 0x78 && result[7] == 0x12, "NATIVE on little-endian host == LITTLE_ENDIAN");
@@ -181,8 +192,8 @@ tstsuite("unit tests for pages_util helpers") {
     }
 
     tstcase("build_with_counter_ids: counter is XORed (not overwritten) onto the base") {
-        uint8_t base[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        uint8_t *result = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_BIG_ENDIAN);
+        uint8_t  base[8] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+        uint8_t *result  = build_with_counter_ids(1, 8, base, 0x12345678, 4, PCACHE_ENDIANNESS_BIG_ENDIAN);
         tstcheck(result != NULL, "alloc OK");
         tstcheck(result[0] == 0xFF && result[1] == 0xFF && result[2] == 0xFF && result[3] == 0xFF,
                  "non-counter bytes preserved");
@@ -194,15 +205,19 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("build_with_counter_ids: counter advances by one per item") {
         uint8_t  base[8] = {0};
-        uint8_t *result  = build_with_counter_ids(/*count*/ 4, /*id_size*/ 8, base, /*start*/ 100,
-                                                  /*counter_offset*/ 4, PCACHE_ENDIANNESS_BIG_ENDIAN);
+        uint8_t *result  = build_with_counter_ids(/*count*/ 4,
+                                                  /*id_size*/ 8,
+                                                  base,
+                                                  /*start*/ 100,
+                                                  /*counter_offset*/ 4,
+                                                  PCACHE_ENDIANNESS_BIG_ENDIAN);
         tstcheck(result != NULL, "alloc OK");
 
         for (uint32_t idx = 0; idx < 4; idx++) {
             uint32_t expected = 100 + idx;
             uint8_t *id       = result + idx * 8;
-            uint32_t actual   = ((uint32_t)id[4] << 24) | ((uint32_t)id[5] << 16) | ((uint32_t)id[6] << 8) |
-                              (uint32_t)id[7];
+            uint32_t actual =
+                ((uint32_t)id[4] << 24) | ((uint32_t)id[5] << 16) | ((uint32_t)id[6] << 8) | (uint32_t)id[7];
             tstcheck(actual == expected, "counter at index advances by 1 per item");
         }
         free(result);
@@ -210,13 +225,12 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("build_with_counter_ids: counter offset can be 0 (counter at the start)") {
         uint8_t  base[8] = {0};
-        uint8_t *result  = build_with_counter_ids(1, 8, base, 0xAABBCCDD, /*counter_offset*/ 0,
-                                                  PCACHE_ENDIANNESS_BIG_ENDIAN);
+        uint8_t *result =
+            build_with_counter_ids(1, 8, base, 0xAABBCCDD, /*counter_offset*/ 0, PCACHE_ENDIANNESS_BIG_ENDIAN);
         tstcheck(result != NULL, "alloc OK");
         tstcheck(result[0] == 0xAA && result[1] == 0xBB && result[2] == 0xCC && result[3] == 0xDD,
                  "counter placed at offset 0");
-        tstcheck(result[4] == 0 && result[5] == 0 && result[6] == 0 && result[7] == 0,
-                 "trailing bytes untouched");
+        tstcheck(result[4] == 0 && result[5] == 0 && result[6] == 0 && result[7] == 0, "trailing bytes untouched");
         free(result);
     }
 

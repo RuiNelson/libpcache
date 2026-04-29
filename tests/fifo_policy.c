@@ -46,7 +46,7 @@ tstsuite("FIFO policy") {
         }
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 1, "used == max_pages - 1 mid fill-up");
 
         bool all_present = true;
@@ -77,7 +77,7 @@ tstsuite("FIFO policy") {
             tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "steady-state put OK");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 1, "after max_pages writes, used == max_pages - 1");
 
         tstcheck(!exists(handle, 0), "id 0 (oldest) evicted after writing max_pages pages");
@@ -162,7 +162,7 @@ tstsuite("FIFO policy") {
         tstcheck(open_error == PCACHE_OPEN_OK, "reopen OK");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 1, "invariant survives reopen");
 
         /* The first 4 ids should be evicted (4 writes past steady state required so far). */
@@ -198,7 +198,7 @@ tstsuite("FIFO policy") {
         tstcheck(put_error == PCACHE_PUT_OK, "batch larger than capacity OK on FIFO");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 1, "invariant after batch put");
 
         pcache_close(handle, NULL, NULL, NULL);

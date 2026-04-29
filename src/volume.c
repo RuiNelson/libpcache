@@ -426,7 +426,8 @@ pcache_configuration pcache_inspect_configuration(pcache_handle handle, pcache_i
     return cfg;
 }
 
-pcache_page_count pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error *error, int *sqlite_error) {
+pcache_page_count
+pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error *error, int *sqlite_error) {
     pcache_page_count counts = {0};
     ZERO_2ERR(error, sqlite_error);
 

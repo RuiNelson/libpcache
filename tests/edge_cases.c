@@ -51,11 +51,13 @@ tstsuite("edge cases") {
 
         pcache_inspect_configuration_error config_error = (pcache_inspect_configuration_error)-1;
         (void)pcache_inspect_configuration(99999, &config_error);
-        tstcheck(config_error == PCACHE_INSPECT_CONFIGURATION_INVALID_HANDLE, "inspect_configuration(invalid) -> INVALID_HANDLE");
+        tstcheck(config_error == PCACHE_INSPECT_CONFIGURATION_INVALID_HANDLE,
+                 "inspect_configuration(invalid) -> INVALID_HANDLE");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
         (void)pcache_inspect_page_count(99999, &count_error, NULL);
-        tstcheck(count_error == PCACHE_INSPECT_PAGE_COUNT_INVALID_HANDLE, "inspect_page_count(invalid) -> INVALID_HANDLE");
+        tstcheck(count_error == PCACHE_INSPECT_PAGE_COUNT_INVALID_HANDLE,
+                 "inspect_page_count(invalid) -> INVALID_HANDLE");
     }
 
     tstcase("get_page on missing identifier returns NOT_FOUND") {
@@ -100,7 +102,7 @@ tstsuite("edge cases") {
         tstcheck(delete_error == PCACHE_DELETE_OK, "delete on missing id returns OK");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == 0, "no spurious side effects on the volume");
 
         pcache_close(handle, NULL, NULL, NULL);
@@ -212,34 +214,54 @@ tstsuite("edge cases") {
         /* position + 4 must not exceed id_size — id_size = 16, so position <= 12. */
         unsigned char    pages_buffer[1 * PAGE_SIZE];
         pcache_put_error put_error = (pcache_put_error)-1;
-        pcache_put_pages_with_counter(handle, 1, id_base, 0, /*position*/ 13, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_buffer,
-                                      false, true, &put_error, NULL, NULL);
+        pcache_put_pages_with_counter(handle,
+                                      1,
+                                      id_base,
+                                      0,
+                                      /*position*/ 13,
+                                      PCACHE_ENDIANNESS_BIG_ENDIAN,
+                                      pages_buffer,
+                                      false,
+                                      true,
+                                      &put_error,
+                                      NULL,
+                                      NULL);
         tstcheck(put_error == PCACHE_PUT_INVALID_ARGUMENT, "position out of bounds -> INVALID_ARGUMENT (put)");
 
         pcache_get_error get_error = (pcache_get_error)-1;
-        pcache_get_pages_with_counter(handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_buffer, &get_error,
-                                      NULL, NULL);
+        pcache_get_pages_with_counter(
+            handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_buffer, &get_error, NULL, NULL);
         tstcheck(get_error == PCACHE_GET_INVALID_ARGUMENT, "position out of bounds -> INVALID_ARGUMENT (get)");
 
         bool               results[1];
         pcache_check_error check_error = (pcache_check_error)-1;
-        pcache_check_pages_with_counter(handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error,
-                                        NULL);
+        pcache_check_pages_with_counter(
+            handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error, NULL);
         tstcheck(check_error == PCACHE_CHECK_INVALID_ARGUMENT, "position out of bounds -> INVALID_ARGUMENT (check)");
 
         pcache_delete_error delete_error = (pcache_delete_error)-1;
-        pcache_delete_pages_with_counter(handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, false, true,
-                                         &delete_error, NULL, NULL);
+        pcache_delete_pages_with_counter(
+            handle, 1, id_base, 0, 13, PCACHE_ENDIANNESS_BIG_ENDIAN, false, true, &delete_error, NULL, NULL);
         tstcheck(delete_error == PCACHE_DELETE_INVALID_ARGUMENT, "position out of bounds -> INVALID_ARGUMENT (delete)");
 
         /* Counter overflow: start = UINT32_MAX, count = 2 -> start + count = UINT32_MAX + 2 > UINT32_MAX + 1. */
-        pcache_put_pages_with_counter(handle, 2, id_base, UINT32_MAX, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_buffer,
-                                      false, true, &put_error, NULL, NULL);
+        pcache_put_pages_with_counter(handle,
+                                      2,
+                                      id_base,
+                                      UINT32_MAX,
+                                      0,
+                                      PCACHE_ENDIANNESS_BIG_ENDIAN,
+                                      pages_buffer,
+                                      false,
+                                      true,
+                                      &put_error,
+                                      NULL,
+                                      NULL);
         tstcheck(put_error == PCACHE_PUT_INVALID_ARGUMENT, "counter overflow -> INVALID_ARGUMENT");
 
         /* Invalid endianness value. */
-        pcache_put_pages_with_counter(handle, 1, id_base, 0, 0, (pcache_endianness)99, pages_buffer, false, true,
-                                      &put_error, NULL, NULL);
+        pcache_put_pages_with_counter(
+            handle, 1, id_base, 0, 0, (pcache_endianness)99, pages_buffer, false, true, &put_error, NULL, NULL);
         tstcheck(put_error == PCACHE_PUT_INVALID_ARGUMENT, "invalid endianness -> INVALID_ARGUMENT");
 
         pcache_close(handle, NULL, NULL, NULL);

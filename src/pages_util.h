@@ -27,9 +27,9 @@ bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, 
 ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, off_t byte_offset);
 
 typedef enum {
-    BATCH_DUP_NONE,           /**< No duplicate found. */
-    BATCH_DUP_FOUND,          /**< At least one duplicate ID is present. */
-    BATCH_DUP_OUT_OF_MEMORY,  /**< Detection aborted: scratch allocation failed. */
+    BATCH_DUP_NONE,          /**< No duplicate found. */
+    BATCH_DUP_FOUND,         /**< At least one duplicate ID is present. */
+    BATCH_DUP_OUT_OF_MEMORY, /**< Detection aborted: scratch allocation failed. */
 } batch_dup_result;
 
 /** @brief Check whether the flat ID buffer contains any duplicate entry. */

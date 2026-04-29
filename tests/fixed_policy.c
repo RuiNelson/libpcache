@@ -44,7 +44,7 @@ tstsuite("FIXED policy") {
         tstcheck(fill_ok, "all max_pages writes succeed");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES, "used == max_pages after fill");
         tstcheck(counts.free == 0, "free == 0 after fill");
 
@@ -70,7 +70,7 @@ tstsuite("FIXED policy") {
             (void)put_one(handle, i);
 
         /* Delete two pages, leaving two free slots. */
-        unsigned char       id3[ID_SIZE], id5[ID_SIZE];
+        unsigned char id3[ID_SIZE], id5[ID_SIZE];
         make_id_with_index(id3, ID_SIZE, 3);
         make_id_with_index(id5, ID_SIZE, 5);
         pcache_delete_error delete_error = (pcache_delete_error)-1;
@@ -80,7 +80,7 @@ tstsuite("FIXED policy") {
         tstcheck(delete_error == PCACHE_DELETE_OK, "delete id 5 OK");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 2, "used decremented by 2");
         tstcheck(counts.free == 2, "two free slots after delete");
 
@@ -143,7 +143,7 @@ tstsuite("FIXED policy") {
         tstcheck(none_present, "none of the would-be new ids exist after rollback");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
-        pcache_page_count           counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == 6, "used count unchanged after failed batch");
 
         pcache_close(handle, NULL, NULL, NULL);

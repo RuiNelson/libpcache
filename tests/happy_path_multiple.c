@@ -108,8 +108,8 @@ tstsuite("happy path - multiple page operations") {
         tstcheck(put_error == PCACHE_PUT_DUPLICATE_ID, "second batch fails on duplicate");
 
         /* None of the new ids 10, 11, 12 should be present after the rollback. */
-        bool               results[3];
-        unsigned char      probe_ids[3 * ID_SIZE];
+        bool          results[3];
+        unsigned char probe_ids[3 * ID_SIZE];
         make_id_with_index(probe_ids + 0 * ID_SIZE, ID_SIZE, 10);
         make_id_with_index(probe_ids + 1 * ID_SIZE, ID_SIZE, 11);
         make_id_with_index(probe_ids + 2 * ID_SIZE, ID_SIZE, 12);
@@ -144,20 +144,30 @@ tstsuite("happy path - multiple page operations") {
             make_page_with_index(pages_in + i * PAGE_SIZE, PAGE_SIZE, 7000 + (uint32_t)i);
 
         pcache_put_error put_error = (pcache_put_error)-1;
-        pcache_put_pages_with_counter(handle, BATCH, id_base, /*start*/ 1000, /*position*/ 0,
-                                      PCACHE_ENDIANNESS_BIG_ENDIAN, pages_in, false, true, &put_error, NULL, NULL);
+        pcache_put_pages_with_counter(handle,
+                                      BATCH,
+                                      id_base,
+                                      /*start*/ 1000,
+                                      /*position*/ 0,
+                                      PCACHE_ENDIANNESS_BIG_ENDIAN,
+                                      pages_in,
+                                      false,
+                                      true,
+                                      &put_error,
+                                      NULL,
+                                      NULL);
         tstcheck(put_error == PCACHE_PUT_OK, "put_pages_with_counter OK");
 
         pcache_get_error get_error = (pcache_get_error)-1;
-        pcache_get_pages_with_counter(handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_out,
-                                      &get_error, NULL, NULL);
+        pcache_get_pages_with_counter(
+            handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, pages_out, &get_error, NULL, NULL);
         tstcheck(get_error == PCACHE_GET_OK, "get_pages_with_counter OK");
         tstcheck(memcmp(pages_in, pages_out, sizeof(pages_in)) == 0, "counter-derived contents match");
 
         bool               results[BATCH];
         pcache_check_error check_error = (pcache_check_error)-1;
-        pcache_check_pages_with_counter(handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results,
-                                        &check_error, NULL);
+        pcache_check_pages_with_counter(
+            handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error, NULL);
         tstcheck(check_error == PCACHE_CHECK_OK, "check_pages_with_counter OK");
         bool all_present = true;
         for (size_t i = 0; i < BATCH; i++)
@@ -166,17 +176,17 @@ tstsuite("happy path - multiple page operations") {
         tstcheck(all_present, "all counter-derived ids present");
 
         /* Out-of-range counter values should not be present. */
-        pcache_check_pages_with_counter(handle, 1, id_base, 999, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error,
-                                        NULL);
+        pcache_check_pages_with_counter(
+            handle, 1, id_base, 999, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error, NULL);
         tstcheck(!results[0], "counter value before range absent");
 
         pcache_delete_error delete_error = (pcache_delete_error)-1;
-        pcache_delete_pages_with_counter(handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, false, true,
-                                         &delete_error, NULL, NULL);
+        pcache_delete_pages_with_counter(
+            handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, false, true, &delete_error, NULL, NULL);
         tstcheck(delete_error == PCACHE_DELETE_OK, "delete_pages_with_counter OK");
 
-        pcache_check_pages_with_counter(handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results,
-                                        &check_error, NULL);
+        pcache_check_pages_with_counter(
+            handle, BATCH, id_base, 1000, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, results, &check_error, NULL);
         bool none_present = true;
         for (size_t i = 0; i < BATCH; i++)
             if (results[i])
@@ -214,8 +224,8 @@ tstsuite("happy path - multiple page operations") {
 
         unsigned char    range_ids[21 * ID_SIZE];
         unsigned char    range_pages[21 * PAGE_SIZE];
-        uint32_t         count_out  = 0;
-        pcache_get_error get_error  = (pcache_get_error)-1;
+        uint32_t         count_out = 0;
+        pcache_get_error get_error = (pcache_get_error)-1;
         pcache_get_pages_range(handle, first, last, range_ids, range_pages, 21, &count_out, &get_error, NULL, NULL);
         tstcheck(get_error == PCACHE_GET_OK, "range get OK");
         tstcheck(count_out == 6, "range [105, 110] inclusive yields 6 results");

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) or any other AI Agen
 
 ## Current State of the Library
 
-The library is not yet ready for production. We can make all the breaking changes we want to the specification/headers/etc. 
+The library is in production. Breaking changes to the specification/headers require careful consideration. 
 
 ## Build and Test
 
