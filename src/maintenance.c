@@ -401,7 +401,8 @@ void pcache_set_max_pages(pcache_handle               handle,
             int64_t       live_beyond = 0;
             int           rc          = sqlite3_prepare_v2(
                 volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?", -1, &stmt, NULL);
-            if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+            if (rc == SQLITE_OK)
+                rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
             if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
                 live_beyond = sqlite3_column_int64(stmt, 0);
             sqlite3_finalize(stmt);
@@ -414,7 +415,7 @@ void pcache_set_max_pages(pcache_handle               handle,
             if (live_beyond > 0) {
                 /* Fail only when the total live count exceeds the new limit. */
                 int64_t total_live = 0;
-                rc = sqlite3_prepare_v2(
+                rc                 = sqlite3_prepare_v2(
                     volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL", -1, &stmt, NULL);
                 if (rc == SQLITE_OK && sqlite3_step(stmt) == SQLITE_ROW)
                     total_live = sqlite3_column_int64(stmt, 0);
@@ -437,10 +438,14 @@ void pcache_set_max_pages(pcache_handle               handle,
                 }
                 size_t dst_cnt = 0;
 
-                rc = sqlite3_prepare_v2(volume->db,
+                rc = sqlite3_prepare_v2(
+                    volume->db,
                     "SELECT rowid FROM pages WHERE id_hash IS NULL AND rowid <= ? ORDER BY rowid ASC",
-                    -1, &stmt, NULL);
-                if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+                    -1,
+                    &stmt,
+                    NULL);
+                if (rc == SQLITE_OK)
+                    rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
                 if (rc == SQLITE_OK) {
                     while (sqlite3_step(stmt) == SQLITE_ROW && dst_cnt < (size_t)live_beyond)
                         dst_slots[dst_cnt++] = sqlite3_column_int64(stmt, 0);
@@ -469,16 +474,20 @@ void pcache_set_max_pages(pcache_handle               handle,
                 }
                 size_t src_cnt = 0;
 
-                rc = sqlite3_prepare_v2(volume->db,
+                rc = sqlite3_prepare_v2(
+                    volume->db,
                     "SELECT rowid, id_hash, id FROM pages WHERE id_hash IS NOT NULL AND rowid > ? ORDER BY rowid ASC",
-                    -1, &stmt, NULL);
-                if (rc == SQLITE_OK) rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
+                    -1,
+                    &stmt,
+                    NULL);
+                if (rc == SQLITE_OK)
+                    rc = sqlite3_bind_int64(stmt, 1, (int64_t)new_max_pages);
                 if (rc == SQLITE_OK) {
                     while (sqlite3_step(stmt) == SQLITE_ROW && src_cnt < (size_t)live_beyond) {
                         sources[src_cnt].rowid   = sqlite3_column_int64(stmt, 0);
                         sources[src_cnt].id_hash = sqlite3_column_int64(stmt, 1);
-                        const void *blob     = sqlite3_column_blob(stmt, 2);
-                        int         blob_len = sqlite3_column_bytes(stmt, 2);
+                        const void *blob         = sqlite3_column_blob(stmt, 2);
+                        int         blob_len     = sqlite3_column_bytes(stmt, 2);
                         sources[src_cnt].id_blob = NULL;
                         sources[src_cnt].id_len  = 0;
                         if (blob && blob_len > 0) {
@@ -524,8 +533,10 @@ void pcache_set_max_pages(pcache_handle               handle,
                 for (size_t i = 0; i < src_cnt && io_ok; i++) {
                     off_t src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
                     off_t dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
-                    if (pread(volume->fd, buf, volume->config.page_size, src_off) != (ssize_t)volume->config.page_size ||
-                        pwrite(volume->fd, buf, volume->config.page_size, dst_off) != (ssize_t)volume->config.page_size) {
+                    if (pread(volume->fd, buf, volume->config.page_size, src_off) !=
+                            (ssize_t)volume->config.page_size ||
+                        pwrite(volume->fd, buf, volume->config.page_size, dst_off) !=
+                            (ssize_t)volume->config.page_size) {
                         SET_ERR(posix_error, errno);
                         SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
                         io_ok = false;
@@ -557,14 +568,14 @@ void pcache_set_max_pages(pcache_handle               handle,
                 sqlite3_stmt *ins_stmt  = NULL;
                 sqlite3_stmt *null_stmt = NULL;
 
-                tx_rc = sqlite3_prepare_v2(volume->db,
-                    "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &del_stmt, NULL);
+                tx_rc = sqlite3_prepare_v2(
+                    volume->db, "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &del_stmt, NULL);
                 if (tx_rc == SQLITE_OK)
-                    tx_rc = sqlite3_prepare_v2(volume->db,
-                        "INSERT INTO pages(rowid, id_hash, id) VALUES(?, ?, ?)", -1, &ins_stmt, NULL);
+                    tx_rc = sqlite3_prepare_v2(
+                        volume->db, "INSERT INTO pages(rowid, id_hash, id) VALUES(?, ?, ?)", -1, &ins_stmt, NULL);
                 if (tx_rc == SQLITE_OK)
-                    tx_rc = sqlite3_prepare_v2(volume->db,
-                        "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &null_stmt, NULL);
+                    tx_rc = sqlite3_prepare_v2(
+                        volume->db, "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &null_stmt, NULL);
 
                 for (size_t i = 0; i < src_cnt && tx_rc == SQLITE_OK; i++) {
                     sqlite3_reset(del_stmt);

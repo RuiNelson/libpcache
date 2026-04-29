@@ -1,6 +1,7 @@
 #pragma once
 
-#include "errno.h"
+#include <errno.h>
+#include <stdbool.h>
 
 /**
  * @file libpcache_errors.h
@@ -181,8 +182,8 @@ typedef enum pcache_set_max_pages_error {
     PCACHE_SET_MAX_PAGES_INVALID_HANDLE =
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
     PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES =
-        PCACHE_CODE_SET_MAX_PAGES_WOULD_DISCARD_PAGES, /**< FIXED volume: total live pages exceed new_max_pages. */
-    PCACHE_SET_MAX_PAGES_IO_ERROR     = PCACHE_CODE_IO_ERROR,    /**< A data-file I/O call failed; inspect @p posix_error. */
+        PCACHE_CODE_SET_MAX_PAGES_WOULD_DISCARD_PAGES,    /**< FIXED volume: total live pages exceed new_max_pages. */
+    PCACHE_SET_MAX_PAGES_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p posix_error. */
     PCACHE_SET_MAX_PAGES_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY =
         PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed during auto-relocation. */

@@ -400,6 +400,11 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
     }
 
     if (volume->fd >= 0) {
+        if (fsync(volume->fd) != 0) {
+            SET_ERR(posix_error, errno);
+            if (error && *error == PCACHE_CLOSE_OK)
+                SET_ERR(error, PCACHE_CLOSE_IO_ERROR);
+        }
         if (close(volume->fd) != 0) {
             SET_ERR(posix_error, errno);
             if (error && *error == PCACHE_CLOSE_OK)
