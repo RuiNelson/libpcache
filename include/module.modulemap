@@ -1,0 +1,7 @@
+module pcache [extern_c] {
+    header "libpcache.h"
+    header "libpcache_errors.h"
+    export *
+
+    link "pcache"
+}
