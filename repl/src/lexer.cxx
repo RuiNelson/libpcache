@@ -25,8 +25,8 @@ void lexer_tokenize(token_list *list, const std::string &input) {
         bool is_end   = (c == '\0');
 
         if (g_lexer_debug)
-            std::cerr << "LEX: i=" << i << " c=" << (c ? c : '0') << " is_space=" << is_space
-                      << " is_end=" << is_end << " state=" << state << " lexeme=[" << lexeme << "]\n";
+            std::cerr << "LEX: i=" << i << " c=" << (c ? c : '0') << " is_space=" << is_space << " is_end=" << is_end
+                      << " state=" << state << " lexeme=[" << lexeme << "]\n";
 
         switch (state) {
             case LEX_START:

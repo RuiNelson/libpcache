@@ -9,7 +9,6 @@
 #include "commands.hxx"
 #include "lexer.hxx"
 
-
 static args::ArgumentParser g_parser("pcache_repl", "A REPL for libpcache");
 
 static args::HelpFlag g_help(g_parser, "help", "Show this help", {'h', "help"});

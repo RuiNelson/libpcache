@@ -18,7 +18,7 @@ bool cmd_check(repl_context *ctx, const command &cmd) {
 
     pcache_check_error chk_err;
     int                sqlite_err = 0;
-    bool               exists = pcache_check_page(ctx->handle, id_buf.data(), &chk_err, &sqlite_err);
+    bool               exists     = pcache_check_page(ctx->handle, id_buf.data(), &chk_err, &sqlite_err);
 
     if (chk_err != PCACHE_CHECK_OK) {
         print_error(static_cast<int>(chk_err), sqlite_err, 0);

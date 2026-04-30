@@ -15,8 +15,7 @@ bool cmd_set_max_pages(repl_context *ctx, const command &cmd) {
 
     pcache_set_max_pages_error smp_err;
     int                        sqlite_err = 0, posix_err = 0;
-    pcache_set_max_pages(ctx->handle, new_max, has_flag(cmd, "--durable"),
-                         &smp_err, &sqlite_err, &posix_err);
+    pcache_set_max_pages(ctx->handle, new_max, has_flag(cmd, "--durable"), &smp_err, &sqlite_err, &posix_err);
 
     if (smp_err != PCACHE_SET_MAX_PAGES_OK) {
         print_error(static_cast<int>(smp_err), sqlite_err, posix_err);

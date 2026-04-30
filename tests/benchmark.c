@@ -10,14 +10,14 @@
 #include <time.h>
 #include <unistd.h>
 
-#define PAGES_PER_BATCH  1000
+#define PAGES_PER_BATCH 1000
 
 typedef struct {
-    const char      *label;
-    uint64_t        volume_bytes;
-    uint32_t        page_size;
-    uint32_t        id_size;
-    uint32_t        max_pages;
+    const char *label;
+    uint64_t    volume_bytes;
+    uint32_t    page_size;
+    uint32_t    id_size;
+    uint32_t    max_pages;
 } benchmark_config;
 
 int main(void) {
@@ -36,7 +36,7 @@ int main(void) {
 
     for (size_t cfg = 0; cfg < num_configs; cfg++) {
         benchmark_config *c = &configs[cfg];
-        c->max_pages = (uint32_t)(c->volume_bytes / c->page_size);
+        c->max_pages        = (uint32_t)(c->volume_bytes / c->page_size);
 
         /* Limit batch size to avoid insane memory usage for 100MB/1KB (100K pages = 100MB buffer). */
         uint32_t batch_size = PAGES_PER_BATCH;
@@ -44,10 +44,10 @@ int main(void) {
             batch_size = 100; /* 100 pages per batch to keep buffer reasonable */
         }
 
-        const size_t ids_buffer_size  = batch_size * c->id_size;
-        const size_t data_buffer_size = batch_size * c->page_size;
-        unsigned char *ids_buffer     = malloc(ids_buffer_size);
-        unsigned char *data_buffer   = malloc(data_buffer_size);
+        const size_t   ids_buffer_size  = batch_size * c->id_size;
+        const size_t   data_buffer_size = batch_size * c->page_size;
+        unsigned char *ids_buffer       = malloc(ids_buffer_size);
+        unsigned char *data_buffer      = malloc(data_buffer_size);
         if (!ids_buffer || !data_buffer) {
             fprintf(stderr, "%s: failed to allocate buffers\n", c->label);
             free(ids_buffer);
@@ -63,7 +63,7 @@ int main(void) {
         unlink(db_path);
         unlink(dat_path);
 
-        pcache_file_pair paths = { db_path, dat_path };
+        pcache_file_pair paths = {db_path, dat_path};
 
         pcache_configuration config = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
@@ -95,13 +95,13 @@ int main(void) {
 
         uint32_t pages_written = 0;
         while (pages_written < c->max_pages) {
-            uint32_t remaining = c->max_pages - pages_written;
+            uint32_t remaining  = c->max_pages - pages_written;
             uint32_t this_batch = (remaining < batch_size) ? remaining : batch_size;
 
             for (uint32_t i = 0; i < this_batch; i++) {
-                uint32_t page_idx = pages_written + i;
-                uint32_t h = page_idx * 2654435771ul;
-                unsigned char *id = ids_buffer + i * c->id_size;
+                uint32_t       page_idx = pages_written + i;
+                uint32_t       h        = page_idx * 2654435771ul;
+                unsigned char *id       = ids_buffer + i * c->id_size;
                 memset(id, 0, c->id_size);
                 if (c->id_size >= 4) {
                     id[c->id_size - 4] = (unsigned char)((h >> 24) & 0xFF);
@@ -112,11 +112,9 @@ int main(void) {
             }
 
             pcache_put_error put_error = (pcache_put_error)-1;
-            pcache_put_pages(handle, this_batch, ids_buffer, data_buffer,
-                            false, false, &put_error, NULL, NULL);
+            pcache_put_pages(handle, this_batch, ids_buffer, data_buffer, false, false, &put_error, NULL, NULL);
             if (put_error != PCACHE_PUT_OK) {
-                fprintf(stderr, "%s: pcache_put_pages failed at page %u: %d\n",
-                        c->label, pages_written, put_error);
+                fprintf(stderr, "%s: pcache_put_pages failed at page %u: %d\n", c->label, pages_written, put_error);
                 pcache_close(handle, NULL, NULL, NULL);
                 free(ids_buffer);
                 free(data_buffer);
@@ -129,21 +127,17 @@ int main(void) {
         clock_gettime(CLOCK_MONOTONIC, &end);
         pcache_close(handle, NULL, NULL, NULL);
 
-        double elapsed = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-        off_t db_size  = file_size(db_path);
-        off_t dat_size = file_size(dat_path);
+        double elapsed  = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+        off_t  db_size  = file_size(db_path);
+        off_t  dat_size = file_size(dat_path);
 
-        double db_mb   = db_size / (1024.0 * 1024.0);
-        double dat_gb  = dat_size / (1024.0 * 1024.0 * 1024.0);
-        double total_gb = (db_size + dat_size) / (1024.0 * 1024.0 * 1024.0);
+        double db_mb         = db_size / (1024.0 * 1024.0);
+        double dat_gb        = dat_size / (1024.0 * 1024.0 * 1024.0);
+        double total_gb      = (db_size + dat_size) / (1024.0 * 1024.0 * 1024.0);
         double pages_per_sec = pages_written / elapsed;
 
-        printf("| %s | %u KB | %u B | %u | %.2f MB |\n",
-               c->label,
-               c->page_size / 1024,
-               c->id_size,
-               pages_written,
-               db_mb);
+        printf(
+            "| %s | %u KB | %u B | %u | %.2f MB |\n", c->label, c->page_size / 1024, c->id_size, pages_written, db_mb);
 
         /* Clean up temp files. */
         unlink(db_path);
@@ -157,7 +151,7 @@ int main(void) {
             unlink(wal_path);
         }
 
-next_config:
+    next_config:
         free(ids_buffer);
         free(data_buffer);
     }

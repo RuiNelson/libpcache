@@ -8,7 +8,7 @@
 bool cmd_inspect(repl_context *ctx, const command &cmd) {
     (void)cmd;
     pcache_inspect_configuration_error err;
-    pcache_configuration config = pcache_inspect_configuration(ctx->handle, &err);
+    pcache_configuration               config = pcache_inspect_configuration(ctx->handle, &err);
 
     if (err != PCACHE_INSPECT_CONFIGURATION_OK) {
         std::cerr << "inspect failed\n";

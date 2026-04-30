@@ -131,7 +131,7 @@ void OpenCmd(args::Subparser &parser) {
 
     repl_context ctx;
     ctx.commands_file = commands_file.Get().empty() ? nullptr : cmds;
-    g_lexer_debug = debug_lexer;
+    g_lexer_debug     = debug_lexer;
 
     if (!open_volume_with_ctx(db, data, &ctx)) {
         exit(1);

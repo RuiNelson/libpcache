@@ -1,10 +1,10 @@
+#include "errors.hxx"
 #include <cerrno>
 #include <cstring>
 #include <iostream>
+#include <libpcache_errors.h>
 #include <map>
 #include <string>
-#include <libpcache_errors.h>
-#include "errors.hxx"
 
 static const std::map<int, std::string> pcache_errors = {
     {PCACHE_CODE_IO_ERROR, "I/O error - a read or write operation failed"},
@@ -18,16 +18,20 @@ static const std::map<int, std::string> pcache_errors = {
     {PCACHE_CODE_OPEN_SCHEMA_VERSION_TOO_HIGH, "open: database schema version is newer than supported"},
     {PCACHE_CODE_PUT_PAGE_CAPACITY_EXCEEDED, "put: FIXED volume is full and has no free slots"},
     {PCACHE_CODE_PUT_DUPLICATE_ID, "put: a page with this identifier already exists"},
-    {PCACHE_CODE_PUT_INVALID_ARGUMENT, "put: position is out of bounds, counter would overflow, or endianness is invalid"},
+    {PCACHE_CODE_PUT_INVALID_ARGUMENT,
+     "put: position is out of bounds, counter would overflow, or endianness is invalid"},
     {PCACHE_CODE_GET_PAGE_NOT_FOUND, "get: no page with this identifier exists in the volume"},
     {PCACHE_CODE_GET_PAGES_NOT_FOUND, "get: no pages with these identifiers exist in the volume"},
-    {PCACHE_CODE_GET_INVALID_ARGUMENT, "get: position is out of bounds, counter would overflow, or endianness is invalid"},
+    {PCACHE_CODE_GET_INVALID_ARGUMENT,
+     "get: position is out of bounds, counter would overflow, or endianness is invalid"},
     {PCACHE_CODE_GET_RANGE_INVALID_RANGE, "get: 'first' is greater than 'last'"},
     {PCACHE_CODE_GET_RANGE_BUFFER_TOO_SMALL, "get: buffer capacity is smaller than the number of matching pages"},
-    {PCACHE_CODE_CHECK_INVALID_ARGUMENT, "check: position is out of bounds, counter would overflow, or endianness is invalid"},
+    {PCACHE_CODE_CHECK_INVALID_ARGUMENT,
+     "check: position is out of bounds, counter would overflow, or endianness is invalid"},
     {PCACHE_CODE_CHECK_RANGE_INVALID_RANGE, "check: 'first' is greater than 'last'"},
     {PCACHE_CODE_DELETE_INVALID_RANGE, "delete: 'first' is greater than 'last'"},
-    {PCACHE_CODE_DELETE_INVALID_ARGUMENT, "delete: position is out of bounds, counter would overflow, or endianness is invalid"},
+    {PCACHE_CODE_DELETE_INVALID_ARGUMENT,
+     "delete: position is out of bounds, counter would overflow, or endianness is invalid"},
     {PCACHE_CODE_DEFRAGMENT_CANCELLED, "defragment: the progress callback returned false - volume remains consistent"},
     {PCACHE_CODE_SET_MAX_PAGES_WOULD_DISCARD_PAGES, "set_max_pages: FIXED volume has more live pages than new max"},
 };

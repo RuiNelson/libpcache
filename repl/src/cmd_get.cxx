@@ -18,7 +18,7 @@ bool cmd_get(repl_context *ctx, const command &cmd) {
         return false;
 
     pcache_inspect_configuration_error conf_err;
-    pcache_configuration config = pcache_inspect_configuration(ctx->handle, &conf_err);
+    pcache_configuration               config = pcache_inspect_configuration(ctx->handle, &conf_err);
 
     std::vector<uint8_t> page_buf(config.page_size);
 

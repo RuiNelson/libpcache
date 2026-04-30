@@ -22,7 +22,7 @@ struct command {
     std::vector<std::string> flags;
 };
 
-void lexer_tokenize(token_list *list, const std::string &input);
-token *lexer_next(token_list *list);
-void lexer_reset(token_list *list);
+void    lexer_tokenize(token_list *list, const std::string &input);
+token  *lexer_next(token_list *list);
+void    lexer_reset(token_list *list);
 command parser_parse(token_list *tokens);

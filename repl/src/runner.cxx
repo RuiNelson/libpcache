@@ -20,16 +20,26 @@ bool run_command(repl_context *ctx, const std::string &line) {
         return true;
     }
 
-    if (cmd.name == "help") return cmd_help(ctx, cmd);
-    if (cmd.name == "close") return cmd_close(ctx, cmd);
-    if (cmd.name == "put") return cmd_put(ctx, cmd);
-    if (cmd.name == "get") return cmd_get(ctx, cmd);
-    if (cmd.name == "check") return cmd_check(ctx, cmd);
-    if (cmd.name == "delete") return cmd_delete(ctx, cmd);
-    if (cmd.name == "space") return cmd_pages(ctx, cmd);
-    if (cmd.name == "inspect") return cmd_inspect(ctx, cmd);
-    if (cmd.name == "set_max_pages") return cmd_set_max_pages(ctx, cmd);
-    if (cmd.name == "defragment") return cmd_defragment(ctx, cmd);
+    if (cmd.name == "help")
+        return cmd_help(ctx, cmd);
+    if (cmd.name == "close")
+        return cmd_close(ctx, cmd);
+    if (cmd.name == "put")
+        return cmd_put(ctx, cmd);
+    if (cmd.name == "get")
+        return cmd_get(ctx, cmd);
+    if (cmd.name == "check")
+        return cmd_check(ctx, cmd);
+    if (cmd.name == "delete")
+        return cmd_delete(ctx, cmd);
+    if (cmd.name == "space")
+        return cmd_pages(ctx, cmd);
+    if (cmd.name == "inspect")
+        return cmd_inspect(ctx, cmd);
+    if (cmd.name == "set_max_pages")
+        return cmd_set_max_pages(ctx, cmd);
+    if (cmd.name == "defragment")
+        return cmd_defragment(ctx, cmd);
 
     std::cerr << "Unknown command: " << cmd.name << ". Type 'help' for available commands.\n";
     return true;

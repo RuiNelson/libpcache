@@ -247,7 +247,7 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("SET_2ERR in else-without-braces: success path must not write any error value") {
         int err = 0, sqlite_err = 0;
-        int rc  = 100; /* simulates SQLITE_ROW */
+        int rc = 100; /* simulates SQLITE_ROW */
 
         if (rc == 100)
             (void)rc;
@@ -260,7 +260,7 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("SET_3ERR in else-without-braces: success path must not write any error value") {
         int err = 0, sqlite_err = 0, posix_err = 0;
-        int rc  = 100;
+        int rc = 100;
 
         if (rc == 100)
             (void)rc;
@@ -274,7 +274,7 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("SET_2ERR in else-without-braces: error path must set both values") {
         int err = 0, sqlite_err = 0;
-        int rc  = 1; /* not SQLITE_ROW */
+        int rc = 1; /* not SQLITE_ROW */
 
         if (rc == 100)
             (void)rc;
