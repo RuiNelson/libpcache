@@ -20,6 +20,7 @@
 /** @brief Per-volume runtime state: one entry in the open-handle table. */
 typedef struct {
     bool          in_use;                     /**< Whether this slot is occupied by an open volume. */
+    pcache_handle self_handle;                /**< The public handle value for this slot; set once on first activation. */
     sqlite3      *db;                         /**< SQLite database connection for the index. */
     sqlite3_stmt *statement_find_rowid;       /**< Prepared statement: look up a page ROWID by ID. */
     sqlite3_stmt *statement_insert;           /**< Prepared statement: insert a new page row. */

@@ -310,4 +310,119 @@ tstsuite("edge cases") {
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);
     }
+
+    tstcase("handle table grows beyond initial segment: all volumes remain functional") {
+        /* Open 20 volumes — more than the initial segment capacity (16).
+         * Verifies that the segmented table grows correctly and that handles
+         * computed after growth remain correct. */
+        const int         count = 20;
+        test_paths        all_paths[20];
+        pcache_handle     handles[20];
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+
+        for (int i = 0; i < count; i++) {
+            char prefix[32];
+            snprintf(prefix, sizeof prefix, "edge_seg_%d", i);
+            test_paths_init(&all_paths[i], prefix);
+            handles[i] = make_volume_and_open(&all_paths[i], &config);
+            tstcheck(handles[i] != 0, "volume opens after segment boundary");
+        }
+
+        /* Each volume must accept a put and return the same data on get. */
+        bool all_ok = true;
+        for (int i = 0; i < count; i++) {
+            unsigned char id[ID_SIZE], page_out[PAGE_SIZE];
+            make_id_with_index(id, ID_SIZE, (uint32_t)i);
+            make_page_with_index(page_out, PAGE_SIZE, (uint32_t)i);
+            pcache_put_error put_error = (pcache_put_error)-1;
+            pcache_put_page(handles[i], id, page_out, false, true, &put_error, NULL, NULL);
+            if (put_error != PCACHE_PUT_OK)
+                all_ok = false;
+        }
+        tstcheck(all_ok, "put succeeds on every volume after table growth");
+
+        bool all_readable = true;
+        for (int i = 0; i < count; i++) {
+            unsigned char id[ID_SIZE], expected[PAGE_SIZE], actual[PAGE_SIZE];
+            make_id_with_index(id, ID_SIZE, (uint32_t)i);
+            make_page_with_index(expected, PAGE_SIZE, (uint32_t)i);
+            pcache_get_error get_error = (pcache_get_error)-1;
+            pcache_get_page(handles[i], id, actual, &get_error, NULL, NULL);
+            if (get_error != PCACHE_GET_OK || memcmp(expected, actual, PAGE_SIZE) != 0)
+                all_readable = false;
+        }
+        tstcheck(all_readable, "data round-trips correctly on every volume after table growth");
+
+        for (int i = 0; i < count; i++) {
+            pcache_close(handles[i], NULL, NULL, NULL);
+            test_paths_cleanup(&all_paths[i]);
+        }
+    }
+
+    tstcase("handle table: slot recycling works after table growth") {
+        /* Open 20 volumes, close the first 4, then reopen 4 new volumes.
+         * The recycled slots must get valid handles and function correctly. */
+        const int         total = 20;
+        test_paths        all_paths[20];
+        pcache_handle     handles[20];
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+
+        for (int i = 0; i < total; i++) {
+            char prefix[32];
+            snprintf(prefix, sizeof prefix, "edge_recycle_%d", i);
+            test_paths_init(&all_paths[i], prefix);
+            handles[i] = make_volume_and_open(&all_paths[i], &config);
+        }
+
+        /* Close and clean up the first 4 volumes to free their slots. */
+        for (int i = 0; i < 4; i++) {
+            pcache_close(handles[i], NULL, NULL, NULL);
+            test_paths_cleanup(&all_paths[i]);
+        }
+
+        /* Reopen 4 new volumes — they should recycle the freed slots. */
+        test_paths  new_paths[4];
+        pcache_handle new_handles[4];
+        bool all_recycled = true;
+        for (int i = 0; i < 4; i++) {
+            char prefix[32];
+            snprintf(prefix, sizeof prefix, "edge_recycle_new_%d", i);
+            test_paths_init(&new_paths[i], prefix);
+            new_handles[i] = make_volume_and_open(&new_paths[i], &config);
+            if (new_handles[i] == 0)
+                all_recycled = false;
+        }
+        tstcheck(all_recycled, "recycled slots produce valid handles");
+
+        bool all_functional = true;
+        for (int i = 0; i < 4; i++) {
+            unsigned char id[ID_SIZE], page[PAGE_SIZE];
+            make_id_with_index(id, ID_SIZE, (uint32_t)i);
+            make_page_with_index(page, PAGE_SIZE, (uint32_t)i);
+            pcache_put_error put_error = (pcache_put_error)-1;
+            pcache_put_page(new_handles[i], id, page, false, true, &put_error, NULL, NULL);
+            if (put_error != PCACHE_PUT_OK)
+                all_functional = false;
+        }
+        tstcheck(all_functional, "put succeeds on recycled-slot volumes");
+
+        for (int i = 0; i < 4; i++) {
+            pcache_close(new_handles[i], NULL, NULL, NULL);
+            test_paths_cleanup(&new_paths[i]);
+        }
+        for (int i = 4; i < total; i++) {
+            pcache_close(handles[i], NULL, NULL, NULL);
+            test_paths_cleanup(&all_paths[i]);
+        }
+    }
 }
