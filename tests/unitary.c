@@ -140,6 +140,19 @@ tstsuite("unit tests for pages_util helpers") {
                                             PCACHE_ENDIANNESS_BIG_ENDIAN,
                                             &counter_offset) == false,
                  "count > UINT32_MAX+1 invalid");
+        /* start=0, count=1 is the simplest valid case; the old formulation
+         * (UINT32_MAX - start + 1u) overflows to 0 on 32-bit size_t and
+         * incorrectly rejects every count > 0. */
+        tstcheck(validate_with_counter_args(
+                     ID_SIZE, /*count*/ 1, /*start*/ 0, 0, PCACHE_ENDIANNESS_BIG_ENDIAN, &counter_offset) == true,
+                 "start = 0, count = 1 -> valid (overflow-safe check)");
+        tstcheck(validate_with_counter_args(ID_SIZE,
+                                            /*count*/ (size_t)UINT32_MAX + 1u,
+                                            /*start*/ 0,
+                                            0,
+                                            PCACHE_ENDIANNESS_BIG_ENDIAN,
+                                            &counter_offset) == true,
+                 "start = 0, count = UINT32_MAX+1 -> exactly fills range, valid");
     }
 
     tstcase("validate_with_counter_args: invalid endianness rejected") {

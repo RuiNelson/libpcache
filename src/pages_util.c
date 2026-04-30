@@ -194,7 +194,9 @@ bool validate_with_counter_args(size_t            id_size,
     if (!is_valid_endianness(endianness))
         return false;
 
-    if (count > (size_t)UINT32_MAX - (size_t)start + 1u)
+    /* Avoid overflow: start + count <= UINT32_MAX + 1  ⟺  count - 1 <= UINT32_MAX - start (when count > 0).
+     * The naive form (UINT32_MAX - start + 1u) wraps to 0 when start == 0 on 32-bit size_t. */
+    if (count > 0 && count - 1 > (size_t)(UINT32_MAX - start))
         return false;
 
     if (counter_offset_out)
