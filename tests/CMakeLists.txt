@@ -33,6 +33,7 @@ set(PCACHE_TESTS
     elasticity
     drafragmentation
     database_check
+    benchmark
 )
 
 foreach(test_name ${PCACHE_TESTS})
