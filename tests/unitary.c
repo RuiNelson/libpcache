@@ -1,6 +1,7 @@
 /* Unit tests for pure helper functions in src/pages_util.h */
 
 #include "libpcache.h"
+#include "macros.h"
 #include "pages_util.h"
 #include "tst.h"
 
@@ -240,5 +241,47 @@ tstsuite("unit tests for pages_util helpers") {
         /* malloc(0) is implementation-defined; either NULL or a freeable pointer is fine. */
         free(result);
         tstcheck(true, "count == 0 does not crash");
+    }
+
+    /* ───────────────── SET_ERR / SET_2ERR / SET_3ERR macros ───────────────── */
+
+    tstcase("SET_2ERR in else-without-braces: success path must not write any error value") {
+        int err = 0, sqlite_err = 0;
+        int rc  = 100; /* simulates SQLITE_ROW */
+
+        if (rc == 100)
+            (void)rc;
+        else
+            SET_2ERR(&err, &sqlite_err, 999, rc);
+
+        tstcheck(err == 0, "err must stay 0 when if-branch is taken");
+        tstcheck(sqlite_err == 0, "sqlite_err must stay 0 when if-branch is taken");
+    }
+
+    tstcase("SET_3ERR in else-without-braces: success path must not write any error value") {
+        int err = 0, sqlite_err = 0, posix_err = 0;
+        int rc  = 100;
+
+        if (rc == 100)
+            (void)rc;
+        else
+            SET_3ERR(&err, &sqlite_err, &posix_err, 999, rc, -1);
+
+        tstcheck(err == 0, "err must stay 0 when if-branch is taken");
+        tstcheck(sqlite_err == 0, "sqlite_err must stay 0 when if-branch is taken");
+        tstcheck(posix_err == 0, "posix_err must stay 0 when if-branch is taken");
+    }
+
+    tstcase("SET_2ERR in else-without-braces: error path must set both values") {
+        int err = 0, sqlite_err = 0;
+        int rc  = 1; /* not SQLITE_ROW */
+
+        if (rc == 100)
+            (void)rc;
+        else
+            SET_2ERR(&err, &sqlite_err, 999, rc);
+
+        tstcheck(err == 999, "err must be set in error path");
+        tstcheck(sqlite_err == 1, "sqlite_err must be set in error path");
     }
 }
