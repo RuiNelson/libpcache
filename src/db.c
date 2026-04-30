@@ -122,7 +122,7 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error) {
 
 void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqlite_error) {
     if (fsync(volume->fd) != 0) {
-        SET_ERR(posix_error, EIO);
+        SET_ERR(posix_error, errno);
         return;
     }
     int sqlite_rc = sqlite3_wal_checkpoint_v2(volume->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);

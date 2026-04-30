@@ -1,10 +1,12 @@
 /* Unit tests for pure helper functions in src/pages_util.h */
 
+#include "db.h"
 #include "libpcache.h"
 #include "macros.h"
 #include "pages_util.h"
 #include "tst.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -283,5 +285,20 @@ tstsuite("unit tests for pages_util helpers") {
 
         tstcheck(err == 999, "err must be set in error path");
         tstcheck(sqlite_err == 1, "sqlite_err must be set in error path");
+    }
+
+    /* ───────────────── wait_for_synchronization ───────────────── */
+
+    tstcase("wait_for_synchronization: propagates real errno, not EIO") {
+        pcache_volume volume = {0};
+        volume.fd = -1; /* invalid fd — fsync(-1) fails with EBADF */
+
+        int posix_err  = 0;
+        int sqlite_err = 0;
+        wait_for_synchronization(&volume, &posix_err, &sqlite_err);
+
+        tstcheck(posix_err != 0, "posix_err must be set on fsync failure");
+        tstcheck(posix_err == EBADF, "real errno (EBADF) must be propagated");
+        tstcheck(posix_err != EIO, "must not mask errno with EIO");
     }
 }
