@@ -234,24 +234,24 @@ void pcache_close(
 
 ### Introspection -- Configuration
 
-**`pcache_get_configuration`.** Returns the volume's parameters, obtained from the `metadata` table. It allows the caller to inspect the configuration of a reopened volume without keeping a local copy. On error, the contents of the returned structure are unspecified and the caller must rely on the error output to determine whether the result is meaningful.
+**`pcache_inspect_configuration`.** Returns the volume's parameters, obtained from the `metadata` table. It allows the caller to inspect the configuration of a reopened volume without keeping a local copy. On error, the contents of the returned structure are unspecified and the caller must rely on the error output to determine whether the result is meaningful.
 
 ```c
-pcache_configuration pcache_get_configuration(
-    pcache_handle                    handle,
-    pcache_get_configuration_error  *error
+pcache_configuration pcache_inspect_configuration(
+    pcache_handle                       handle,
+    pcache_inspect_configuration_error *error
 );
 ```
 
 ### Introspection -- Storage
 
-**`pcache_get_page_count`.** Returns the number of used and free pages in the volume. The `used` field contains the count of pages currently stored, and the `free` field contains the count of available slots. On error, the contents of the returned structure are unspecified and the caller must rely on the error output to determine whether the result is meaningful.
+**`pcache_inspect_page_count`.** Returns the number of used and free pages in the volume. The `used` field contains the count of pages currently stored, and the `free` field contains the count of available slots. On error, the contents of the returned structure are unspecified and the caller must rely on the error output to determine whether the result is meaningful.
 
 ```c
-pcache_page_count pcache_get_page_count(
-    pcache_handle                 handle,
-    pcache_get_page_count_error  *error,
-    int                          *sqlite_error
+pcache_page_count pcache_inspect_page_count(
+    pcache_handle                    handle,
+    pcache_inspect_page_count_error *error,
+    int                             *sqlite_error
 );
 ```
 
