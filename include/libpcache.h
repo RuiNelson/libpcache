@@ -243,12 +243,14 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
 /* ──────────── Introspection ──────────── */
 
 /**
- * @brief Return the configuration of an open volume.
+ * @brief Return the current configuration of an open volume.
  *
- * The configuration is cached in memory after ::pcache_open.
+ * The configuration is kept in memory and updated by operations such as
+ * ::pcache_set_max_pages, so the returned value always reflects the current
+ * state of the volume.
  *
- * @param handle       Open volume descriptor.
- * @param error Receives the operation outcome; may be @c NULL.
+ * @param handle Open volume descriptor.
+ * @param error  Receives the operation outcome; may be @c NULL.
  * @return The volume configuration, or an unspecified value on error.
  */
 pcache_configuration pcache_inspect_configuration(pcache_handle handle, pcache_inspect_configuration_error *error);
