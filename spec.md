@@ -412,6 +412,64 @@ void pcache_get_pages(
 );
 ```
 
+#### Endianness and Range Queries
+
+Range methods (`pcache_get_pages_range`, `pcache_check_pages_range`, `pcache_delete_pages_range`) compare identifiers byte-by-byte, which corresponds to SQLite BLOB ordering. This comparison is equivalent to unsigned numerical comparison only when multi-byte integers are stored in **big-endian** byte order: the most-significant byte occupies the lowest address, so `counter_a < counter_b` numerically implies that the byte sequence of `counter_a` is lexicographically less than the byte sequence of `counter_b`.
+
+With little-endian encoding the orderings diverge for values that cross a byte boundary. For example, counter 256 encodes as `{0x00, 0x01, 0x00, 0x00}` in little-endian, which sorts lexicographically *before* counter 1 (`{0x01, 0x00, 0x00, 0x00}`), even though 256 > 1 numerically. A range query intended to cover counter values 1..255 would therefore not include 256, and a query from 1..256 would retrieve 256 before 1.
+
+**Precondition:** the equivalence between numerical and lexicographic order assumes that the counter bytes in `id_base` are all zero. With zero counter bytes, XOR acts as a direct embedding and the ordering is preserved. If any counter byte in `id_base` is non-zero, the XOR may invert bits and break the ordering; the range bounds then require adjustment to compensate.
+
+`PCACHE_ENDIANNESS_NATIVE` depends on the host architecture and is not recommended for any use case where byte-level ordering matters.
+
+**Example:** store 1 000 pages using an 8-byte identifier (4-byte fixed prefix + 4-byte big-endian counter), then retrieve and count pages for counter values 100..199, and finally delete all pages with counter values 500..999.
+
+```c
+// id_size = 8: 4-byte fixed prefix + 4-byte big-endian counter (position = 0).
+// Counter bytes in id_base are all 0x00, so XOR acts as direct embedding.
+uint8_t id_base[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00};
+
+pcache_put_error put_err;
+pcache_put_pages_with_counter(handle, 1000, id_base, /*start=*/0, /*position=*/0,
+                              PCACHE_ENDIANNESS_BIG_ENDIAN, pages_data,
+                              /*fail_if_exists=*/false, /*durable=*/false,
+                              &put_err, NULL, NULL);
+
+// The identifier for counter N is id_base XOR N (big-endian).
+// Because the counter bytes of id_base are 0x00, the derived identifiers are:
+//   counter 100 (0x00000064) -> {0xDE,0xAD,0xBE,0xEF, 0x00,0x00,0x00,0x64}
+//   counter 199 (0x000000C7) -> {0xDE,0xAD,0xBE,0xEF, 0x00,0x00,0x00,0xC7}
+// With big-endian the byte sequence is monotonically increasing with the counter,
+// so the range bounds are simply the prefix followed by the counter in big-endian.
+uint8_t first_100[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0x64};
+uint8_t last_199[8]  = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x00, 0xC7};
+
+// --- Retrieve pages 100..199 ---
+uint8_t ids_buf[100 * 8];
+uint8_t pages_buf[100 * page_size];
+uint32_t retrieved = 0;
+pcache_get_error get_err;
+pcache_get_pages_range(handle, first_100, last_199,
+                       ids_buf, pages_buf, /*buffer_capacity=*/100,
+                       &retrieved, &get_err, NULL, NULL);
+// retrieved == 100; pages_buf holds the data for counters 100..199 in ascending order.
+
+// --- Count pages 100..199 (without reading page data) ---
+uint32_t count_in_range = 0;
+pcache_check_error chk_err;
+pcache_check_pages_range(handle, first_100, last_199,
+                         &count_in_range, &chk_err, NULL);
+// count_in_range == 100
+
+// --- Delete pages 500..999 ---
+uint8_t first_500[8] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x01, 0xF4}; // 500 = 0x1F4
+uint8_t last_999[8]  = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00, 0x03, 0xE7}; // 999 = 0x3E7
+pcache_delete_error del_err;
+pcache_delete_pages_range(handle, first_500, last_999,
+                          /*wipe_data_file=*/false, /*durable=*/false,
+                          &del_err, NULL, NULL);
+```
+
 **`pcache_get_pages_range`.** Retrieves all pages whose identifier falls within the closed interval [`first`, `last`] (byte-by-byte comparison) into caller-supplied buffers. Pages are returned in ascending identifier order (SQLite BLOB ordering). The caller provides `ids_buffer` (at least `buffer_capacity * id_size` bytes) to receive the identifier of each page, and `pages_buffer` (at least `buffer_capacity * page_size` bytes) to receive the page data. `*count_out` is set to the number of pages retrieved. If the range contains more pages than `buffer_capacity`, the operation fails with `PCACHE_GET_RANGE_BUFFER_TOO_SMALL` and nothing is written to the buffers. If `first` is greater than `last`, the operation fails with `PCACHE_GET_RANGE_INVALID_RANGE`. An empty match is not an error; `*count_out` is set to zero.
 
 ```c
