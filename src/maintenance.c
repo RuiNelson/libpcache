@@ -384,6 +384,11 @@ void pcache_set_max_pages(pcache_handle               handle,
                           int                        *posix_error) {
     ZERO_3ERR(error, sqlite_error, posix_error);
 
+    if (new_max_pages == 0) {
+        SET_ERR(error, PCACHE_SET_MAX_PAGES_INVALID_ARGUMENT);
+        return;
+    }
+
     pcache_volume *volume = volume_from_handle(handle);
     if (!volume) {
         SET_ERR(error, PCACHE_SET_MAX_PAGES_INVALID_HANDLE);
@@ -725,12 +730,13 @@ void pcache_set_max_pages(pcache_handle               handle,
         }
     }
 
-    volume->config.max_pages = new_max_pages;
-
     if (durable) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error))
+        if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
+            goto unlock;
+        }
     }
+    volume->config.max_pages = new_max_pages;
 
 unlock:
     pthread_mutex_unlock(&volume->mutex);

@@ -772,7 +772,8 @@ void pcache_defragment(pcache_handle            handle,
  * strictly oldest-first and may discard pages that are not the oldest.
  *
  * @param handle        Open volume descriptor.
- * @param new_max_pages New maximum page count; must be ≥ 1.
+ * @param new_max_pages New maximum page count; must be ≥ 1 — passing 0 fails with
+ *                      @c PCACHE_SET_MAX_PAGES_INVALID_ARGUMENT.
  * @param durable       If @c true, block until data is durable on disk.
  * @param error         Receives the operation outcome; may be @c NULL.
  * @param sqlite_error  Receives the SQLite error code on failure; may be @c NULL.

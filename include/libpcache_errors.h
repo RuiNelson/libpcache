@@ -54,6 +54,7 @@
 #define PCACHE_CODE_GET_RANGE_INVALID_RANGE           0x02000013
 #define PCACHE_CODE_GET_RANGE_BUFFER_TOO_SMALL        0x02000014
 #define PCACHE_CODE_CHECK_RANGE_INVALID_RANGE         0x02000015
+#define PCACHE_CODE_SET_MAX_PAGES_INVALID_ARGUMENT    0x02000016
 
 /** Outcome of ::pcache_create. */
 
@@ -187,6 +188,8 @@ typedef enum pcache_set_max_pages_error {
     PCACHE_SET_MAX_PAGES_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY =
         PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed during auto-relocation. */
+    PCACHE_SET_MAX_PAGES_INVALID_ARGUMENT =
+        PCACHE_CODE_SET_MAX_PAGES_INVALID_ARGUMENT, /**< @p new_max_pages is zero. */
 } pcache_set_max_pages_error;
 
 /** Outcome of ::pcache_preallocate. */

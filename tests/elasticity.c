@@ -258,4 +258,34 @@ tstsuite("elasticity - grow and shrink") {
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);
     }
+
+    tstcase("set_max_pages rejects new_max_pages == 0") {
+        test_paths paths;
+        test_paths_init(&paths, "elastic_zero_max");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = 4,
+            .id_size         = ID_SIZE,
+        };
+
+        pcache_create_error create_error = (pcache_create_error)-1;
+        pcache_create(&paths.pair, &config, false, false, &create_error, NULL, NULL);
+        tstcheck(create_error == PCACHE_CREATE_OK, "create OK");
+
+        pcache_open_error open_error = (pcache_open_error)-1;
+        pcache_handle     handle     = pcache_open(&paths.pair, &open_error, NULL, NULL);
+        tstcheck(open_error == PCACHE_OPEN_OK, "open OK");
+
+        pcache_set_max_pages_error smp_error = (pcache_set_max_pages_error)-1;
+        pcache_set_max_pages(handle, 0, false, &smp_error, NULL, NULL);
+        tstcheck(smp_error == PCACHE_SET_MAX_PAGES_INVALID_ARGUMENT, "zero new_max_pages rejected");
+
+        pcache_configuration cfg = pcache_inspect_configuration(handle, NULL);
+        tstcheck(cfg.max_pages == 4, "max_pages unchanged after invalid call");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
 }
