@@ -730,11 +730,9 @@ void pcache_set_max_pages(pcache_handle               handle,
         }
     }
 
-    if (durable) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
-            SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
-            goto unlock;
-        }
+    if (!sync_if_durable(volume, durable, posix_error, sqlite_error)) {
+        SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
+        goto unlock;
     }
     volume->config.max_pages = new_max_pages;
 
@@ -801,10 +799,8 @@ void pcache_preallocate(pcache_handle             handle,
         }
     }
 
-    if (durable) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error))
-            SET_ERR(error, PCACHE_PREALLOCATE_IO_ERROR);
-    }
+    if (!sync_if_durable(volume, durable, posix_error, sqlite_error))
+        SET_ERR(error, PCACHE_PREALLOCATE_IO_ERROR);
 
 unlock:
     pthread_mutex_unlock(&volume->mutex);
