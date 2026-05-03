@@ -4,6 +4,10 @@ Fast, reliable, persistent storage for fixed-size pages — identified by any bi
 
 A **volume** is two files working as one: a data file that holds the raw page bytes, and a SQLite index that maps every key to its exact location. Every operation is thread-safe and fully atomic.
 
+### Wrappers
+
+![Swift Programming Language Logo](doc/swiftlogo.png) [libpcache_Swift for Swift](https://github.com/RuiNelson/libpcache_Swift)
+
 ## Main Use Cases
 
 - Store fixed-size chunks of data on disk and retrieve them instantly by binary key.
