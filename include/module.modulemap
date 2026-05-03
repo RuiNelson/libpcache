@@ -1,0 +1,5 @@
+module pcache {
+    header "libpcache.h"
+    header "libpcache_errors.h"
+    export *
+}
