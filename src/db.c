@@ -117,6 +117,13 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error) {
         SET_ERR(sqlite_error, sqlite_rc);
         rowid = -1;
     }
+    /*
+     * Release the statement's read cursor immediately. When the step above returns SQLITE_ROW the
+     * statement keeps an open read transaction until it is reset; on a WAL database that lingering
+     * read mark makes a later sqlite3_wal_checkpoint_v2(SQLITE_CHECKPOINT_RESTART) fail with
+     * SQLITE_LOCKED, which surfaced as a spurious I/O error from durable deletes.
+     */
+    sqlite3_reset(volume->statement_find_rowid);
     return rowid;
 }
 
