@@ -102,3 +102,7 @@ tstsuite("suite name") {
 - **libsqlite3** — system package, dynamically linked
 - **xxHash** (v0.8.2) — fetched by CMake via FetchContent, statically linked
 - **tst** — fetched by CMake via FetchContent, test-only
+
+## GitHub Release Notes format
+
+If you're making a release on github, command `gh` is installed, read the template in file `misc/ReleaseTemplate.md`.
