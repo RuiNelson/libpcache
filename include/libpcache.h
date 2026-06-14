@@ -470,6 +470,8 @@ void pcache_get_pages(pcache_handle     handle,
  * @p buffer_capacity, fails with @c PCACHE_GET_RANGE_BUFFER_TOO_SMALL without writing to the
  * buffers.  An empty match is not an error; @p count_out is set to zero.
  * If @p first is greater than @p last, fails with @c PCACHE_GET_RANGE_INVALID_RANGE.
+ * When non-@c NULL, @p count_out is set to zero on every error return as well, so it is
+ * always well-defined after the call.
  *
  * @par Use with ::pcache_put_pages_with_counter
  * When pages were stored via ::pcache_put_pages_with_counter using

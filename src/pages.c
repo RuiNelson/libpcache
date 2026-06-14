@@ -1114,6 +1114,11 @@ void pcache_get_pages_range(pcache_handle     handle,
     const size_t id_size   = volume->config.id_size;
     const size_t page_size = volume->config.page_size;
 
+    /* Reset the output count up front so every return path (including errors)
+     * leaves it well-defined, matching pcache_check_pages_range. */
+    if (count_out)
+        *count_out = 0;
+
     if (memcmp(first, last, id_size) > 0) {
         SET_ERR(error, PCACHE_GET_RANGE_INVALID_RANGE);
         goto unlock;
@@ -1145,9 +1150,6 @@ void pcache_get_pages_range(pcache_handle     handle,
         SET_ERR(error, PCACHE_GET_RANGE_BUFFER_TOO_SMALL);
         goto unlock;
     }
-
-    if (count_out)
-        *count_out = 0;
 
     if (total_count == 0)
         goto unlock;

@@ -37,7 +37,7 @@ static bool grow_table(void) {
     }
 
     new_segs[s_segment_count] = seg;
-    s_segments = new_segs;
+    s_segments                = new_segs;
     s_segment_count++;
     return true;
 }

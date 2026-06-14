@@ -193,6 +193,45 @@ tstsuite("edge cases") {
         test_paths_cleanup(&paths);
     }
 
+    tstcase("set_max_pages keeps config consistent with committed metadata on sync failure") {
+        test_paths paths;
+        test_paths_init(&paths, "edge_smp_sync_fail");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES, /* 8 */
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        /* Reduce capacity with a durable request whose sync fails after the
+         * metadata change has already been committed. */
+        pcache_set_max_pages_error smp_error   = (pcache_set_max_pages_error)-1;
+        int                        posix_error = 0;
+        pcache_test_fail_sync(true);
+        pcache_set_max_pages(handle, 4, true, &smp_error, NULL, &posix_error);
+        pcache_test_fail_sync(false);
+        tstcheck(smp_error == PCACHE_SET_MAX_PAGES_IO_ERROR, "sync failure surfaces as IO error");
+
+        /* The metadata commit already happened, so the in-memory configuration
+         * must reflect the new capacity, not the stale old one. */
+        pcache_inspect_configuration_error cfg_err = (pcache_inspect_configuration_error)-1;
+        pcache_configuration               cfg     = pcache_inspect_configuration(handle, &cfg_err);
+        tstcheck(cfg.max_pages == 4, "in-memory max_pages reflects committed metadata, not the old value");
+
+        /* Reopening confirms the metadata was indeed persisted as the new value. */
+        pcache_close(handle, NULL, NULL, NULL);
+        pcache_open_error open_error = (pcache_open_error)-1;
+        handle                       = pcache_open(&paths.pair, &open_error, NULL, NULL);
+        tstcheck(open_error == PCACHE_OPEN_OK, "reopen succeeds");
+        pcache_configuration reopened = pcache_inspect_configuration(handle, NULL);
+        tstcheck(reopened.max_pages == 4, "persisted max_pages == 4 after reopen");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
     tstcase("get_pages_range invalid range and buffer-too-small are reported") {
         test_paths paths;
         test_paths_init(&paths, "edge_range_errors");
@@ -218,16 +257,19 @@ tstsuite("edge cases") {
 
         unsigned char    out_ids[5 * ID_SIZE];
         unsigned char    out_pages[5 * PAGE_SIZE];
-        uint32_t         got       = 0;
+        uint32_t         got       = 999; /* sentinel: must be reset to 0 even on error */
         pcache_get_error get_error = (pcache_get_error)-1;
         pcache_get_pages_range(handle, first, last, out_ids, out_pages, 5, &got, &get_error, NULL, NULL);
         tstcheck(get_error == PCACHE_GET_RANGE_INVALID_RANGE, "first > last -> INVALID_RANGE");
+        tstcheck(got == 0, "count_out is reset to 0 on INVALID_RANGE");
 
         /* Now a valid range but a buffer that's too small. */
         make_id_with_index(first, ID_SIZE, 1);
         make_id_with_index(last, ID_SIZE, 5);
+        got = 999;
         pcache_get_pages_range(handle, first, last, out_ids, out_pages, 2, &got, &get_error, NULL, NULL);
         tstcheck(get_error == PCACHE_GET_RANGE_BUFFER_TOO_SMALL, "buffer too small -> BUFFER_TOO_SMALL");
+        tstcheck(got == 0, "count_out is reset to 0 on BUFFER_TOO_SMALL");
 
         /* check_pages_range with first > last. */
         make_id_with_index(first, ID_SIZE, 99);

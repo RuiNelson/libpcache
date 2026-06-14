@@ -730,11 +730,17 @@ void pcache_set_max_pages(pcache_handle               handle,
         }
     }
 
+    /* The metadata transaction is now committed, so the new capacity is the
+     * durable truth regardless of the outcome of the synchronization below.
+     * Update the in-memory configuration before syncing so that a later
+     * fsync/checkpoint failure cannot leave config.max_pages disagreeing with
+     * the persisted value. */
+    volume->config.max_pages = new_max_pages;
+
     if (!sync_if_durable(volume, durable, posix_error, sqlite_error)) {
         SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
         goto unlock;
     }
-    volume->config.max_pages = new_max_pages;
 
 unlock:
     pthread_mutex_unlock(&volume->mutex);
