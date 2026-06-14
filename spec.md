@@ -147,11 +147,11 @@ The interface is exposed through a single primary header (`libpcache.h`), which 
 
 **Descriptor model.** Each open volume is identified by a positive integer, analogous to a POSIX file descriptor. The value zero is reserved to signal failure at open time; any strictly positive value represents a valid descriptor, which must be supplied in all subsequent operations on the volume. There is no fixed limit on the number of simultaneously open handles; the internal table grows dynamically as needed.
 
-**Error propagation.** Public functions do not use their return value to signal operation-level failure. Instead, they accept as a final argument a pointer to a function-specific error enumeration, named `pcache_<function>_error`, into which the outcome of the operation is recorded. Each function therefore exposes only the error conditions it can actually produce, avoiding the conflation of unrelated failure modes into a single catch-all type. When a function may fail due to errors originating in underlying subsystems — typically the SQLite engine or POSIX system calls —, additional pointers are provided, one per possible error source, allowing the caller to inspect the original error code without ambiguity. Any of these pointers may be `NULL` if the caller does not wish to collect the corresponding information.
+**Error propagation.** Public functions do not use their return value to signal operation-level failure. Instead, they accept as a final argument a pointer to a function-specific error enumeration, named `pcache_<function>_error`, into which the outcome of the operation is recorded. Each function therefore exposes only the error conditions it can actually produce, avoiding the conflation of unrelated failure modes into a single catch-all type. When a function may fail due to errors originating in underlying subsystems — typically the SQLite engine or POSIX system calls —, additional pointers are provided, one per possible error source, allowing the caller to inspect the original error code without ambiguity. Any of these pointers may be `NULL` if the caller does not wish to collect the corresponding information. Omitting an error pointer never changes which operation steps are performed.
 
 **Error enumerations.** The values of each `pcache_<function>_error` enumeration are assigned explicitly, so that numeric codes remain stable and can be compared or logged without ambiguity. They adopt descriptive English names, avoiding POSIX-inherited abbreviations (for instance, `PCACHE_OPEN_NO_SUCH_DEVICE_OR_ADDRESS` is used in place of `PCACHE_OPEN_ENXIO`). All such enumerations are declared together in `libpcache_errors.h`.
 
-**Per-operation durability.** Functions that modify the volume accept a boolean `durable` parameter that controls, at the call level, whether the operation waits for `fsync` to complete before returning. When true, it guarantees that the committed state survives a sudden system failure; when false, the call returns as soon as the write has been handed off to the operating system.
+**Per-operation durability.** Functions that modify the volume accept a boolean `durable` parameter that controls, at the call level, whether the operation waits for `fsync` to complete before returning. When true, it guarantees that the committed state survives a sudden system failure; when false, the call returns as soon as the write has been handed off to the operating system. This behaviour is independent of whether the caller supplies the optional `error`, `sqlite_error`, or `posix_error` output pointers.
 
 ### Types and Structures
 
@@ -211,6 +211,8 @@ void pcache_create(
 ```
 
 **Opening (`pcache_open`).** Opens a previously created volume, queries the `metadata` table to retrieve its configuration, and returns a positive integer descriptor. On error, returns zero and records the reason in the supplied error pointers.
+
+The persisted `page_size`, `max_pages`, and `id_size` values must all be non-zero. A volume containing zero for any of these mandatory numeric fields is corrupt and fails to open with `PCACHE_OPEN_CORRUPT`.
 
 ```c
 pcache_handle pcache_open(
@@ -274,9 +276,9 @@ void pcache_put_page(
 );
 ```
 
-**`pcache_put_pages`.** Stores multiple pages in a single call. The `ids` buffer must contain `count * id_size` bytes laid out contiguously; the `pages_data` buffer must contain `count * page_size` bytes. The operation is atomic: either all pages are written successfully, or none are. On volumes with FIFO policy, inserts that exceed the capacity trigger eviction of the oldest pages as needed.
+**`pcache_put_pages`.** Stores multiple pages in a single call. The `ids` buffer must contain `count * id_size` bytes laid out contiguously; the `pages_data` buffer must contain `count * page_size` bytes. The operation is atomic: either all pages are written successfully, or none are. If a data-file write or the index commit fails after an existing slot has been overwritten, the original bytes of every pre-existing live page are restored before the function returns. On volumes with FIFO policy, inserts that exceed the capacity trigger eviction of the oldest pages as needed.
 
-When `fail_if_exists` is `true`, the library verifies that none of the supplied identifiers already exist in the volume before proceeding; if any duplicate is found, the operation fails with a dedicated error code and no pages are written. When `false`, no such check is performed and the caller assumes responsibility for identifier uniqueness across all supplied pages.
+When `fail_if_exists` is `true`, the library verifies that none of the supplied identifiers already exist in the volume and that the batch itself contains no duplicate identifiers before proceeding; if any duplicate is found, the operation fails with a dedicated error code and no pages are written. When `false`, neither check is performed and the caller assumes responsibility for identifier uniqueness across all supplied pages.
 
 ```c
 void pcache_put_pages(

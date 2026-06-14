@@ -4,12 +4,15 @@
 #include "libpcache.h"
 #include "tst.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <string.h>
 
 #define ID_SIZE   16
 #define PAGE_SIZE 128
 #define MAX_PAGES 8
+
+void pcache_test_fail_sync(bool fail);
 
 tstsuite("edge cases") {
 
@@ -138,6 +141,53 @@ tstsuite("edge cases") {
         pcache_check_error check_error = (pcache_check_error)-1;
         bool               still_there = pcache_check_page(handle, id, &check_error, NULL);
         tstcheck(!still_there, "page deleted exactly once");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("durable operations still synchronize when the operation error pointer is NULL") {
+        test_paths paths;
+        test_paths_init(&paths, "edge_durable_null_error");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        unsigned char id[ID_SIZE], page[PAGE_SIZE];
+        make_id_with_index(id, ID_SIZE, 700);
+        make_page_with_index(page, PAGE_SIZE, 700);
+        int posix_error = 0;
+        pcache_test_fail_sync(true);
+        pcache_put_page(handle, id, page, false, true, NULL, NULL, &posix_error);
+        pcache_test_fail_sync(false);
+        tstcheck(posix_error == EIO, "put synchronization was attempted despite error == NULL");
+
+        posix_error = 0;
+        pcache_test_fail_sync(true);
+        pcache_delete_page(handle, id, false, true, NULL, NULL, &posix_error);
+        pcache_test_fail_sync(false);
+        tstcheck(posix_error == EIO, "delete synchronization was attempted despite error == NULL");
+
+        make_id_with_index(id, ID_SIZE, 701);
+        make_page_with_index(page, PAGE_SIZE, 701);
+        pcache_put_page(handle, id, page, false, false, NULL, NULL, NULL);
+
+        posix_error = 0;
+        pcache_test_fail_sync(true);
+        pcache_delete_pages_range(handle, id, id, false, true, NULL, NULL, &posix_error);
+        pcache_test_fail_sync(false);
+        tstcheck(posix_error == EIO, "range-delete synchronization was attempted despite error == NULL");
+
+        posix_error = 0;
+        pcache_test_fail_sync(true);
+        pcache_defragment(handle, NULL, NULL, false, true, NULL, NULL, &posix_error);
+        pcache_test_fail_sync(false);
+        tstcheck(posix_error == EIO, "defragment synchronization was attempted despite error == NULL");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);
@@ -315,9 +365,9 @@ tstsuite("edge cases") {
         /* Open 20 volumes — more than the initial segment capacity (16).
          * Verifies that the segmented table grows correctly and that handles
          * computed after growth remain correct. */
-        const int         count = 20;
-        test_paths        all_paths[20];
-        pcache_handle     handles[20];
+        const int            count = 20;
+        test_paths           all_paths[20];
+        pcache_handle        handles[20];
         pcache_configuration config = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = PAGE_SIZE,
@@ -367,9 +417,9 @@ tstsuite("edge cases") {
     tstcase("handle table: slot recycling works after table growth") {
         /* Open 20 volumes, close the first 4, then reopen 4 new volumes.
          * The recycled slots must get valid handles and function correctly. */
-        const int         total = 20;
-        test_paths        all_paths[20];
-        pcache_handle     handles[20];
+        const int            total = 20;
+        test_paths           all_paths[20];
+        pcache_handle        handles[20];
         pcache_configuration config = {
             .capacity_policy = PCACHE_CAPACITY_FIXED,
             .page_size       = PAGE_SIZE,
@@ -391,9 +441,9 @@ tstsuite("edge cases") {
         }
 
         /* Reopen 4 new volumes — they should recycle the freed slots. */
-        test_paths  new_paths[4];
+        test_paths    new_paths[4];
         pcache_handle new_handles[4];
-        bool all_recycled = true;
+        bool          all_recycled = true;
         for (int i = 0; i < 4; i++) {
             char prefix[32];
             snprintf(prefix, sizeof prefix, "edge_recycle_new_%d", i);

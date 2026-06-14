@@ -46,6 +46,23 @@ static bool fetch_metadata_blob(sqlite3 *db, const char *key, void *buffer, int 
     return ok;
 }
 
+static bool update_metadata_u32(sqlite3 *db, const char *key, uint32_t value) {
+    unsigned char bytes[4] = {
+        (unsigned char)value,
+        (unsigned char)(value >> 8),
+        (unsigned char)(value >> 16),
+        (unsigned char)(value >> 24),
+    };
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, "UPDATE metadata SET value=? WHERE key=?", -1, &stmt, NULL) != SQLITE_OK)
+        return false;
+    sqlite3_bind_blob(stmt, 1, bytes, sizeof bytes, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, key, -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE;
+}
+
 tstsuite("database structure (direct SQLite inspection)") {
 
     tstcase("metadata table contains all required entries with correct values") {
@@ -120,6 +137,37 @@ tstsuite("database structure (direct SQLite inspection)") {
 
         sqlite3_close(db);
         test_paths_cleanup(&paths);
+    }
+
+    tstcase("open rejects zero-valued mandatory numeric metadata") {
+        const char *keys[] = {"page_size", "max_pages", "id_size"};
+
+        for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+            test_paths paths;
+            test_paths_init(&paths, keys[i]);
+
+            pcache_configuration config = {
+                .capacity_policy = PCACHE_CAPACITY_FIFO,
+                .page_size       = PAGE_SIZE,
+                .max_pages       = MAX_PAGES,
+                .id_size         = ID_SIZE,
+            };
+            pcache_create_error create_error = (pcache_create_error)-1;
+            pcache_create(&paths.pair, &config, true, true, &create_error, NULL, NULL);
+
+            sqlite3 *db = NULL;
+            sqlite3_open(paths.database_path, &db);
+            bool updated = update_metadata_u32(db, keys[i], 0);
+            sqlite3_close(db);
+            tstcheck(updated, "metadata corruption setup succeeded");
+
+            pcache_open_error open_error = (pcache_open_error)-1;
+            pcache_handle     handle     = pcache_open(&paths.pair, &open_error, NULL, NULL);
+            tstcheck(handle == 0, "corrupt volume does not open");
+            tstcheck(open_error == PCACHE_OPEN_CORRUPT, "zero numeric metadata is reported as corrupt");
+
+            test_paths_cleanup(&paths);
+        }
     }
 
     tstcase("pages table has the expected columns and indexes") {

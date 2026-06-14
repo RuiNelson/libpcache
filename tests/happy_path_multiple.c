@@ -122,6 +122,50 @@ tstsuite("happy path - multiple page operations") {
         test_paths_cleanup(&paths);
     }
 
+    tstcase("put_pages only checks duplicate ids when fail_if_exists is true") {
+        test_paths paths;
+        test_paths_init(&paths, "multi_duplicate_option");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        unsigned char ids[2 * ID_SIZE];
+        unsigned char pages[2 * PAGE_SIZE];
+        make_id_with_index(ids, ID_SIZE, 500);
+        memcpy(ids + ID_SIZE, ids, ID_SIZE);
+        make_page_with_index(pages, PAGE_SIZE, 500);
+        make_page_with_index(pages + PAGE_SIZE, PAGE_SIZE, 501);
+
+        pcache_put_error put_error = (pcache_put_error)-1;
+        pcache_put_pages(handle, 2, ids, pages, false, false, &put_error, NULL, NULL);
+        tstcheck(put_error == PCACHE_PUT_OK, "duplicate batch is accepted when checking is disabled");
+
+        pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == 2, "both duplicate-id rows were stored");
+
+        unsigned char checked_ids[2 * ID_SIZE];
+        unsigned char checked_pages[2 * PAGE_SIZE];
+        make_id_with_index(checked_ids, ID_SIZE, 600);
+        memcpy(checked_ids + ID_SIZE, checked_ids, ID_SIZE);
+        make_page_with_index(checked_pages, PAGE_SIZE, 600);
+        make_page_with_index(checked_pages + PAGE_SIZE, PAGE_SIZE, 601);
+
+        pcache_put_pages(handle, 2, checked_ids, checked_pages, true, false, &put_error, NULL, NULL);
+        tstcheck(put_error == PCACHE_PUT_DUPLICATE_ID, "duplicate batch is rejected when checking is enabled");
+
+        counts = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == 2, "rejected duplicate batch leaves the volume unchanged");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
     tstcase("put_pages_with_counter / get_pages_with_counter roundtrip") {
         test_paths paths;
         test_paths_init(&paths, "multi_counter");

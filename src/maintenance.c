@@ -365,7 +365,7 @@ cleanup_nulls:
         }
     }
 
-    if (durable && error && *error == PCACHE_DEFRAGMENT_OK) {
+    if (durable) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error))
             SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
     }

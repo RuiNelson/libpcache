@@ -243,6 +243,11 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
         goto fail_locked;
     }
 
+    if (page_size == 0 || max_pages == 0 || id_size == 0) {
+        SET_ERR(error, PCACHE_OPEN_CORRUPT);
+        goto fail_locked;
+    }
+
     if (strcmp(policy_str, "FIFO") == 0)
         volume->config.capacity_policy = PCACHE_CAPACITY_FIFO;
     else if (strcmp(policy_str, "FIXED") == 0)

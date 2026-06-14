@@ -11,6 +11,8 @@
 #define PAGE_SIZE 128
 #define MAX_PAGES 8
 
+void pcache_test_fail_put_pwrite_after(size_t successful_writes);
+
 static pcache_put_error put_one(pcache_handle handle, uint32_t index) {
     unsigned char id[ID_SIZE], page[PAGE_SIZE];
     make_id_with_index(id, ID_SIZE, index);
@@ -200,6 +202,56 @@ tstsuite("FIFO policy") {
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
         pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
         tstcheck(counts.used == MAX_PAGES - 1, "invariant after batch put");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("FIFO failed batch restores page bytes referenced by the rolled-back index") {
+        test_paths paths;
+        test_paths_init(&paths, "fifo_batch_rollback");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        for (uint32_t i = 0; i < MAX_PAGES; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "initial FIFO put OK");
+
+        unsigned char ids[3 * ID_SIZE];
+        unsigned char pages[3 * PAGE_SIZE];
+        for (uint32_t i = 0; i < 3; i++) {
+            make_id_with_index(ids + i * ID_SIZE, ID_SIZE, 100 + i);
+            make_page_with_index(pages + i * PAGE_SIZE, PAGE_SIZE, 100 + i);
+        }
+
+        pcache_test_fail_put_pwrite_after(3);
+        pcache_put_error put_error = (pcache_put_error)-1;
+        pcache_put_pages(handle, 3, ids, pages, false, false, &put_error, NULL, NULL);
+        pcache_test_fail_put_pwrite_after(0);
+        tstcheck(put_error == PCACHE_PUT_IO_ERROR, "injected third write failure is reported");
+
+        bool old_pages_preserved = true;
+        for (uint32_t i = 1; i < MAX_PAGES; i++) {
+            unsigned char id[ID_SIZE], expected[PAGE_SIZE], actual[PAGE_SIZE];
+            make_id_with_index(id, ID_SIZE, i);
+            make_page_with_index(expected, PAGE_SIZE, i);
+
+            pcache_get_error get_error = (pcache_get_error)-1;
+            pcache_get_page(handle, id, actual, &get_error, NULL, NULL);
+            if (get_error != PCACHE_GET_OK || memcmp(expected, actual, PAGE_SIZE) != 0)
+                old_pages_preserved = false;
+        }
+        tstcheck(old_pages_preserved, "all pre-existing FIFO pages retain their original bytes");
+
+        bool               new_results[3] = {true, true, true};
+        pcache_check_error check_error    = (pcache_check_error)-1;
+        pcache_check_pages(handle, 3, ids, new_results, &check_error, NULL);
+        tstcheck(!new_results[0] && !new_results[1] && !new_results[2], "rolled-back ids are absent");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);

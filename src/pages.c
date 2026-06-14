@@ -41,8 +41,12 @@ static int64_t find_fifo_cursor(pcache_volume *volume, int *sqlite_return_code) 
     sqlite3_clear_bindings(statement);
     sqlite3_bind_int64(statement, 1, (int64_t)volume->config.max_pages);
     int rc = sqlite3_step(statement);
-    if (rc == SQLITE_ROW)
-        return sqlite3_column_int64(statement, 0);
+    if (rc == SQLITE_ROW) {
+        int64_t cursor = sqlite3_column_int64(statement, 0);
+        sqlite3_reset(statement);
+        return cursor;
+    }
+    sqlite3_reset(statement);
     if (rc == SQLITE_DONE)
         return 1;
     *sqlite_return_code = rc;
@@ -78,7 +82,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
     const int64_t max_pages = (int64_t)volume->config.max_pages;
 
     /* ── Duplicate detection within batch ── */
-    if (!skip_batch_duplicate_check) {
+    if (fail_if_exists && !skip_batch_duplicate_check) {
         switch (batch_has_duplicate_ids(ids, count, id_size)) {
             case BATCH_DUP_FOUND:
                 SET_ERR(error, PCACHE_PUT_DUPLICATE_ID);
@@ -150,7 +154,9 @@ static void _pcache_put_pages(pcache_volume    *volume,
             if (candidate_rc == SQLITE_ROW) {
                 target_rowids[idx] = sqlite3_column_int64(statement, 0);
                 free_search_cursor = target_rowids[idx];
+                sqlite3_reset(statement);
             } else if (candidate_rc == SQLITE_DONE) {
+                sqlite3_reset(statement);
                 if (volume->row_count + inserts_planned < volume->config.max_pages) {
                     do_insert[idx] = true;
                     inserts_planned++;
@@ -162,6 +168,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
                     return;
                 }
             } else {
+                sqlite3_reset(statement);
                 SET_ERR(sqlite_error, candidate_rc);
                 SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
                 free(target_rowids);
@@ -218,6 +225,92 @@ static void _pcache_put_pages(pcache_volume    *volume,
         return;
     }
 
+    /*
+     * A later target in a FIFO batch can be a slot that was live before this
+     * transaction and was only nulled by an earlier delete-ahead step. SQLite
+     * rollback restores its identifier, so preserve its page bytes as well.
+     */
+    page_restore *restores = calloc(count, sizeof *restores);
+    if (!restores) {
+        db_exec(volume->db, "ROLLBACK");
+        SET_ERR(error, PCACHE_PUT_OUT_OF_MEMORY);
+        free(target_rowids);
+        free(do_insert);
+        free(delete_ahead_rowids);
+        return;
+    }
+
+    sqlite3_stmt *restore_probe = NULL;
+    sqlite_return_code =
+        sqlite3_prepare_v2(volume->db, "SELECT id_hash FROM pages WHERE rowid=?", -1, &restore_probe, NULL);
+    if (sqlite_return_code != SQLITE_OK) {
+        db_exec(volume->db, "ROLLBACK");
+        SET_ERR(sqlite_error, sqlite_return_code);
+        SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
+        free_page_restores(restores, count);
+        free(target_rowids);
+        free(do_insert);
+        free(delete_ahead_rowids);
+        return;
+    }
+
+    bool restore_capture_ok = true;
+    for (size_t idx = 0; idx < count && restore_capture_ok; idx++) {
+        if (do_insert[idx])
+            continue;
+
+        bool already_captured = false;
+        for (size_t previous = 0; previous < idx; previous++) {
+            if (restores[previous].needs_restore && restores[previous].rowid == target_rowids[idx]) {
+                already_captured = true;
+                break;
+            }
+        }
+        if (already_captured)
+            continue;
+
+        sqlite3_reset(restore_probe);
+        sqlite3_clear_bindings(restore_probe);
+        sqlite3_bind_int64(restore_probe, 1, target_rowids[idx]);
+        sqlite_return_code = sqlite3_step(restore_probe);
+        if (sqlite_return_code == SQLITE_DONE)
+            continue;
+        if (sqlite_return_code != SQLITE_ROW) {
+            SET_ERR(sqlite_error, sqlite_return_code);
+            SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
+            restore_capture_ok = false;
+            break;
+        }
+        if (sqlite3_column_type(restore_probe, 0) == SQLITE_NULL)
+            continue;
+
+        restores[idx].page_data = malloc(page_size);
+        if (!restores[idx].page_data) {
+            SET_ERR(error, PCACHE_PUT_OUT_OF_MEMORY);
+            restore_capture_ok = false;
+            break;
+        }
+        restores[idx].rowid = target_rowids[idx];
+        off_t byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
+        if (pread(volume->fd, restores[idx].page_data, page_size, byte_offset) != (ssize_t)page_size) {
+            SET_ERR(posix_error, errno ? errno : EIO);
+            SET_ERR(error, PCACHE_PUT_IO_ERROR);
+            restore_capture_ok = false;
+            break;
+        }
+        restores[idx].needs_restore = true;
+    }
+    sqlite3_finalize(restore_probe);
+
+    if (!restore_capture_ok) {
+        db_exec(volume->db, "ROLLBACK");
+        free_page_restores(restores, count);
+        free(target_rowids);
+        free(do_insert);
+        free(delete_ahead_rowids);
+        return;
+    }
+
     sqlite3_stmt *statement_insert = volume->statement_insert;
     sqlite3_stmt *statement_update = volume->statement_update_slot;
     sqlite3_stmt *statement_delete = volume->statement_delete;
@@ -232,6 +325,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
             sqlite3_clear_bindings(statement_delete);
             sqlite3_bind_int64(statement_delete, 1, delete_ahead_rowids[idx]);
             sqlite_return_code = sqlite3_step(statement_delete);
+            sqlite3_reset(statement_delete);
             if (sqlite_return_code != SQLITE_DONE) {
                 SET_ERR(sqlite_error, sqlite_return_code);
                 SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
@@ -252,21 +346,22 @@ static void _pcache_put_pages(pcache_volume    *volume,
             sqlite3_bind_int64(statement, 3, target_rowids[idx]);
 
         sqlite_return_code = sqlite3_step(statement);
+        if (sqlite_return_code == SQLITE_DONE && do_insert[idx]) {
+            target_rowids[idx] = sqlite3_last_insert_rowid(volume->db);
+            inserts_done++;
+        }
+        sqlite3_reset(statement);
         if (sqlite_return_code != SQLITE_DONE) {
             SET_ERR(sqlite_error, sqlite_return_code);
             SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
             transaction_ok = false;
             break;
         }
-
-        if (do_insert[idx]) {
-            target_rowids[idx] = sqlite3_last_insert_rowid(volume->db);
-            inserts_done++;
-        }
     }
 
     if (!transaction_ok) {
         db_exec(volume->db, "ROLLBACK");
+        free_page_restores(restores, count);
         free(target_rowids);
         free(do_insert);
         free(delete_ahead_rowids);
@@ -284,9 +379,11 @@ static void _pcache_put_pages(pcache_volume    *volume,
         off_t       byte_offset = rowid_to_offset(target_rowids[i], page_size);
         ssize_t     written     = put_pwrite(volume, page, page_size, byte_offset);
         if (written != (ssize_t)page_size) {
-            SET_ERR(posix_error, errno);
+            SET_ERR(posix_error, errno ? errno : EIO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             db_exec(volume->db, "ROLLBACK");
+            restore_pages(volume, restores, count, posix_error);
+            free_page_restores(restores, count);
             free(target_rowids);
             free(do_insert);
             free(delete_ahead_rowids);
@@ -299,6 +396,8 @@ static void _pcache_put_pages(pcache_volume    *volume,
         SET_ERR(sqlite_error, sqlite_return_code);
         SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
         db_exec(volume->db, "ROLLBACK");
+        restore_pages(volume, restores, count, posix_error);
+        free_page_restores(restores, count);
         free(target_rowids);
         free(do_insert);
         free(delete_ahead_rowids);
@@ -308,12 +407,13 @@ static void _pcache_put_pages(pcache_volume    *volume,
     /* ── Update in-memory state ── */
     volume->row_count += inserts_done;
 
+    free_page_restores(restores, count);
     free(target_rowids);
     free(do_insert);
     free(delete_ahead_rowids);
 
     /* ── Optionally sync for durability ── */
-    if (durable && error && *error == PCACHE_PUT_OK) {
+    if (durable) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
         }
@@ -652,6 +752,7 @@ static void _pcache_delete_pages(pcache_volume       *volume,
             sqlite3_clear_bindings(statement);
             sqlite3_bind_int64(statement, 1, rowids[idx]);
             int step_rc = sqlite3_step(statement);
+            sqlite3_reset(statement);
             if (step_rc != SQLITE_DONE) {
                 SET_ERR(sqlite_error, step_rc);
                 SET_ERR(error, PCACHE_DELETE_SQLITE_ERROR);
@@ -676,9 +777,11 @@ static void _pcache_delete_pages(pcache_volume       *volume,
     }
 
     /* ── Optionally wipe page data in the data file ── */
+    bool wipe_succeeded = true;
     if (wipe_data_file) {
         for (size_t idx = 0; idx < found_count; idx++) {
             if (!wipe_page_at_rowid(volume, rowids[idx])) {
+                wipe_succeeded = false;
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
@@ -691,7 +794,7 @@ static void _pcache_delete_pages(pcache_volume       *volume,
     }
 
     /* ── Optionally sync for durability ── */
-    if (durable && error && *error == PCACHE_DELETE_OK) {
+    if (durable && wipe_succeeded) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }
@@ -917,9 +1020,11 @@ void pcache_delete_pages_range(pcache_handle        handle,
     }
 
     /* ── Optionally wipe page data in the data file ── */
+    bool wipe_succeeded = true;
     if (wipe_data_file && rowids) {
         for (size_t idx = 0; idx < rowid_count; idx++) {
             if (!wipe_page_at_rowid(volume, rowids[idx])) {
+                wipe_succeeded = false;
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
@@ -934,7 +1039,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
     free(rowids);
 
     /* ── Optionally sync for durability ── */
-    if (durable && error && *error == PCACHE_DELETE_OK) {
+    if (durable && wipe_succeeded) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }

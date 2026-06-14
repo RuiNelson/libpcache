@@ -5,6 +5,14 @@
 #include <unistd.h>
 #include <xxhash.h>
 
+#ifdef PCACHE_TESTING
+static bool s_test_sync_failure;
+
+void pcache_test_fail_sync(bool fail) {
+    s_test_sync_failure = fail;
+}
+#endif
+
 off_t rowid_to_offset(int64_t rowid, size_t page_size) {
     return (off_t)(rowid - 1) * page_size;
 }
@@ -128,6 +136,12 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error) {
 }
 
 void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqlite_error) {
+#ifdef PCACHE_TESTING
+    if (s_test_sync_failure) {
+        SET_ERR(posix_error, EIO);
+        return;
+    }
+#endif
     if (fsync(volume->fd) != 0) {
         SET_ERR(posix_error, errno);
         return;
@@ -139,11 +153,16 @@ void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqli
 }
 
 bool sync_if_durable(pcache_volume *volume, bool durable, int *posix_error, int *sqlite_error) {
-    if (durable) {
-        wait_for_synchronization(volume, posix_error, sqlite_error);
-        return NO_ERRORS(posix_error, sqlite_error);
-    }
-    return true;
+    if (!durable)
+        return true;
+
+    int  local_posix_error   = 0;
+    int  local_sqlite_error  = 0;
+    int *actual_posix_error  = posix_error ? posix_error : &local_posix_error;
+    int *actual_sqlite_error = sqlite_error ? sqlite_error : &local_sqlite_error;
+
+    wait_for_synchronization(volume, actual_posix_error, actual_sqlite_error);
+    return *actual_posix_error == 0 && *actual_sqlite_error == 0;
 }
 
 int db_exec_bind_int64(sqlite3 *db, const char *sql, int64_t value) {

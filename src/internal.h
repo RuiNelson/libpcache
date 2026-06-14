@@ -38,4 +38,5 @@ typedef struct {
 #ifdef PCACHE_TESTING
 void pcache_test_fail_put_pwrite_after(size_t successful_writes);
 void pcache_test_fail_defragment_metadata_after(size_t successful_loads);
+void pcache_test_fail_sync(bool fail);
 #endif

@@ -296,7 +296,9 @@ void pcache_put_page(pcache_handle     handle,
 /**
  * @brief Store multiple pages in a single atomic operation.
  *
- * The operation is atomic: either all pages are written, or none are.
+ * The operation is atomic: either all pages are written, or none are. If a
+ * data-file write or the index commit fails after an existing slot has been
+ * overwritten, the original page bytes are restored.
  * On FIFO volumes, pages beyond @c max_pages are evicted automatically.
  * On FIXED volumes, writes beyond capacity fail.
  *
@@ -305,7 +307,9 @@ void pcache_put_page(pcache_handle     handle,
  * @param ids                 Page identifiers; must be @c count * id_size bytes.
  * @param pages_data          Page contents; must be @c count * page_size bytes.
  * @param fail_if_exists If @c true, verify that none of the identifiers
- *                            already exist before writing.
+ *                            already exist and that the batch contains no
+ *                            duplicate identifiers before writing. If @c false,
+ *                            neither duplicate check is performed.
  * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.

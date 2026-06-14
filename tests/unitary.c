@@ -304,7 +304,7 @@ tstsuite("unit tests for pages_util helpers") {
 
     tstcase("wait_for_synchronization: propagates real errno, not EIO") {
         pcache_volume volume = {0};
-        volume.fd = -1; /* invalid fd — fsync(-1) fails with EBADF */
+        volume.fd            = -1; /* invalid fd — fsync(-1) fails with EBADF */
 
         int posix_err  = 0;
         int sqlite_err = 0;
@@ -313,5 +313,13 @@ tstsuite("unit tests for pages_util helpers") {
         tstcheck(posix_err != 0, "posix_err must be set on fsync failure");
         tstcheck(posix_err == EBADF, "real errno (EBADF) must be propagated");
         tstcheck(posix_err != EIO, "must not mask errno with EIO");
+    }
+
+    tstcase("sync_if_durable reports failure even when error outputs are omitted") {
+        pcache_volume volume = {0};
+        volume.fd            = -1;
+
+        bool synchronized = sync_if_durable(&volume, true, NULL, NULL);
+        tstcheck(!synchronized, "fsync failure is not hidden by NULL output pointers");
     }
 }
