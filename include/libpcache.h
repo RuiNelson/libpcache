@@ -594,6 +594,9 @@ void pcache_check_pages_with_counter(pcache_handle       handle,
  * Uses byte-by-byte comparison (SQLite BLOB ordering).  An empty match is not an error.
  * If @p first is greater than @p last, fails with @c PCACHE_CHECK_RANGE_INVALID_RANGE.
  *
+ * When non-@c NULL, @p count_out is set to zero on every error return as well, so it is
+ * always well-defined after the call.
+ *
  * @param handle       Open volume descriptor.
  * @param first        Lower bound of the identifier range (inclusive); exactly @c id_size bytes.
  * @param last         Upper bound of the identifier range (inclusive); exactly @c id_size bytes.
