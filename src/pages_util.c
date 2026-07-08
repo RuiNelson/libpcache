@@ -194,7 +194,10 @@ bool validate_with_counter_args(size_t            id_size,
                                 uint32_t          position,
                                 pcache_endianness endianness,
                                 size_t           *counter_offset_out) {
-    if ((size_t)position + 4 > id_size)
+    /* Overflow-safe form of `position + 4 > id_size`: on 32-bit size_t,
+     * (size_t)position + 4 can wrap and let an out-of-bounds position through,
+     * which would underflow counter_offset and write past the identifier. */
+    if (id_size < 4 || (size_t)position > id_size - 4u)
         return false;
 
     if (!is_valid_endianness(endianness))
