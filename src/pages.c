@@ -1065,13 +1065,17 @@ void pcache_check_pages_range(pcache_handle       handle,
 
     const size_t id_size = volume->config.id_size;
 
+    /* Reset the output count up front so every return path (including errors)
+     * leaves it well-defined, matching pcache_get_pages_range. */
+    if (count_out)
+        *count_out = 0;
+
     if (memcmp(first, last, id_size) > 0) {
         SET_ERR(error, PCACHE_CHECK_RANGE_INVALID_RANGE);
         goto unlock;
     }
 
     if (count_out) {
-        *count_out         = 0;
         sqlite3_stmt *stmt = NULL;
         int           rc =
             sqlite3_prepare_v2(volume->db, "SELECT COUNT(*) FROM pages WHERE id >= ? AND id <= ?", -1, &stmt, NULL);

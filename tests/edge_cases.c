@@ -274,10 +274,11 @@ tstsuite("edge cases") {
         /* check_pages_range with first > last. */
         make_id_with_index(first, ID_SIZE, 99);
         make_id_with_index(last, ID_SIZE, 0);
-        uint32_t           count       = 0;
+        uint32_t           count       = 999; /* sentinel: must be reset to 0 even on error */
         pcache_check_error check_error = (pcache_check_error)-1;
         pcache_check_pages_range(handle, first, last, &count, &check_error, NULL);
         tstcheck(check_error == PCACHE_CHECK_RANGE_INVALID_RANGE, "check range first > last -> INVALID_RANGE");
+        tstcheck(count == 0, "count_out is reset to 0 on INVALID_RANGE");
 
         /* delete_pages_range with first > last. */
         pcache_delete_error delete_error = (pcache_delete_error)-1;

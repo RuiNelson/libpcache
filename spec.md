@@ -489,7 +489,7 @@ void pcache_get_pages_range(
 );
 ```
 
-**`pcache_check_pages_range`.** Counts the pages whose identifier falls within the closed interval [`first`, `last`] (byte-by-byte comparison), writing the count to `*count_out`. If `first` is greater than `last`, the operation fails with `PCACHE_CHECK_RANGE_INVALID_RANGE`. An empty match is not an error; `*count_out` is set to zero.
+**`pcache_check_pages_range`.** Counts the pages whose identifier falls within the closed interval [`first`, `last`] (byte-by-byte comparison), writing the count to `*count_out`. If `first` is greater than `last`, the operation fails with `PCACHE_CHECK_RANGE_INVALID_RANGE`. An empty match is not an error; `*count_out` is set to zero. When `count_out` is non-`NULL`, it is set to zero on every error return as well, so it is always well-defined after the call.
 
 ```c
 void pcache_check_pages_range(
