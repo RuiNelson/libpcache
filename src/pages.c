@@ -290,10 +290,11 @@ static void _pcache_put_pages(pcache_volume    *volume,
             restore_capture_ok = false;
             break;
         }
-        restores[idx].rowid = target_rowids[idx];
-        off_t byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
-        if (pread(volume->fd, restores[idx].page_data, page_size, byte_offset) != (ssize_t)page_size) {
-            SET_ERR(posix_error, errno ? errno : EIO);
+        restores[idx].rowid   = target_rowids[idx];
+        off_t   byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
+        ssize_t restore_bytes = pread(volume->fd, restores[idx].page_data, page_size, byte_offset);
+        if (restore_bytes != (ssize_t)page_size) {
+            SET_ERR(posix_error, restore_bytes < 0 ? errno : EIO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             restore_capture_ok = false;
             break;
@@ -379,7 +380,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
         off_t       byte_offset = rowid_to_offset(target_rowids[i], page_size);
         ssize_t     written     = put_pwrite(volume, page, page_size, byte_offset);
         if (written != (ssize_t)page_size) {
-            SET_ERR(posix_error, errno ? errno : EIO);
+            SET_ERR(posix_error, written < 0 ? errno : EIO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             db_exec(volume->db, "ROLLBACK");
             restore_pages(volume, restores, count, posix_error);
@@ -526,7 +527,8 @@ static void _pcache_get_pages(pcache_volume    *volume,
             off_t   byte_offset = rowid_to_offset(rowid, volume->config.page_size);
             ssize_t bytes_read  = pread(volume->fd, buffer, volume->config.page_size, byte_offset);
             if (bytes_read != (ssize_t)volume->config.page_size) {
-                SET_ERR(posix_error, errno);
+                /* A short read (EOF) does not set errno; report EIO explicitly. */
+                SET_ERR(posix_error, bytes_read < 0 ? errno : EIO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 all_ok = false;
             }
@@ -1178,7 +1180,7 @@ void pcache_get_pages_range(pcache_handle     handle,
             off_t       offset     = rowid_to_offset(rowid, page_size);
             ssize_t     bytes_read = pread(volume->fd, page_dest, page_size, offset);
             if (bytes_read != (ssize_t)page_size) {
-                SET_ERR(posix_error, errno);
+                SET_ERR(posix_error, bytes_read < 0 ? errno : EIO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 sqlite3_finalize(select_stmt);
                 goto unlock;

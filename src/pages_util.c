@@ -57,8 +57,14 @@ bool wipe_page_at_rowid(pcache_volume *volume, int64_t rowid) {
     if (!volume->wipe_buffer) {
         return false;
     }
-    return pwrite(volume->fd, volume->wipe_buffer, volume->config.page_size, byte_offset) ==
-           (ssize_t)volume->config.page_size;
+    ssize_t written = pwrite(volume->fd, volume->wipe_buffer, volume->config.page_size, byte_offset);
+    if (written != (ssize_t)volume->config.page_size) {
+        /* A short write does not set errno; callers report errno, so set EIO. */
+        if (written >= 0)
+            errno = EIO;
+        return false;
+    }
+    return true;
 }
 
 void free_page_restores(page_restore *restores, size_t count) {
@@ -73,11 +79,11 @@ bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, 
     for (size_t idx = 0; idx < count; idx++) {
         if (!restores[idx].needs_restore)
             continue;
-        off_t byte_offset = rowid_to_offset(restores[idx].rowid, volume->config.page_size);
-        if (pwrite(volume->fd, restores[idx].page_data, volume->config.page_size, byte_offset) !=
-            (ssize_t)volume->config.page_size) {
+        off_t   byte_offset = rowid_to_offset(restores[idx].rowid, volume->config.page_size);
+        ssize_t written     = pwrite(volume->fd, restores[idx].page_data, volume->config.page_size, byte_offset);
+        if (written != (ssize_t)volume->config.page_size) {
             if (posix_error && *posix_error == 0)
-                *posix_error = errno;
+                *posix_error = written < 0 ? errno : EIO;
             return false;
         }
     }

@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 
 #define ID_SIZE   16
 #define PAGE_SIZE 128
@@ -284,6 +285,60 @@ tstsuite("edge cases") {
         pcache_delete_error delete_error = (pcache_delete_error)-1;
         pcache_delete_pages_range(handle, first, last, false, true, &delete_error, NULL, NULL);
         tstcheck(delete_error == PCACHE_DELETE_INVALID_RANGE, "delete range first > last -> INVALID_RANGE");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("short read from a truncated data file reports IO_ERROR with a non-zero errno") {
+        test_paths paths;
+        test_paths_init(&paths, "edge_short_read");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_create_error create_error = (pcache_create_error)-1;
+        pcache_create(&paths.pair, &config, false, false, &create_error, NULL, NULL);
+        tstcheck(create_error == PCACHE_CREATE_OK, "create OK");
+        pcache_open_error open_error = (pcache_open_error)-1;
+        pcache_handle     handle     = pcache_open(&paths.pair, &open_error, NULL, NULL);
+        tstcheck(open_error == PCACHE_OPEN_OK, "open OK");
+
+        unsigned char id[ID_SIZE], page[PAGE_SIZE], page_out[PAGE_SIZE];
+        make_id_with_index(id, ID_SIZE, 1);
+        make_page_with_index(page, PAGE_SIZE, 1);
+        pcache_put_error put_error = (pcache_put_error)-1;
+        pcache_put_page(handle, id, page, false, false, &put_error, NULL, NULL);
+        tstcheck(put_error == PCACHE_PUT_OK, "put OK");
+
+        /* Simulate index/data divergence (e.g. crash after index commit but
+         * before the page bytes reached the file): drop the page bytes. */
+        tstcheck(truncate(paths.data_path, 0) == 0, "truncate data file");
+
+        /* errno is 0 here; a short read (EOF) does not set it, so the library
+         * must report EIO explicitly rather than echoing a success/stale errno. */
+        errno                        = 0;
+        pcache_get_error get_error   = (pcache_get_error)-1;
+        int              posix_error = -1;
+        pcache_get_page(handle, id, page_out, &get_error, NULL, &posix_error);
+        tstcheck(get_error == PCACHE_GET_IO_ERROR, "short read -> IO_ERROR");
+        tstcheck(posix_error == EIO, "short read reports EIO, not a 0/stale errno");
+
+        /* Same guarantee on the range read path. */
+        unsigned char first[ID_SIZE], last[ID_SIZE];
+        make_id_with_index(first, ID_SIZE, 0);
+        make_id_with_index(last, ID_SIZE, 2);
+        unsigned char out_ids[ID_SIZE];
+        uint32_t      got = 0;
+        errno             = 0;
+        get_error         = (pcache_get_error)-1;
+        posix_error       = -1;
+        pcache_get_pages_range(handle, first, last, out_ids, page_out, 1, &got, &get_error, NULL, &posix_error);
+        tstcheck(get_error == PCACHE_GET_IO_ERROR, "range short read -> IO_ERROR");
+        tstcheck(posix_error == EIO, "range short read reports EIO, not a 0/stale errno");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);

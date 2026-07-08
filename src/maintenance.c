@@ -190,8 +190,9 @@ void pcache_defragment(pcache_handle            handle,
                 off_t dst = rowid_to_offset(next_compact, volume->config.page_size);
 
                 /* Step 1: Copy page data */
-                if (pread(volume->fd, buf, volume->config.page_size, src) != (ssize_t)volume->config.page_size) {
-                    SET_ERR(posix_error, errno);
+                ssize_t copied = pread(volume->fd, buf, volume->config.page_size, src);
+                if (copied != (ssize_t)volume->config.page_size) {
+                    SET_ERR(posix_error, copied < 0 ? errno : EIO);
                     SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
                     free(relocation.id_blob);
                     for (size_t k = 0; k < batch_count; k++)
@@ -201,8 +202,9 @@ void pcache_defragment(pcache_handle            handle,
                     free(rowids);
                     goto unlock;
                 }
-                if (pwrite(volume->fd, buf, volume->config.page_size, dst) != (ssize_t)volume->config.page_size) {
-                    SET_ERR(posix_error, errno);
+                copied = pwrite(volume->fd, buf, volume->config.page_size, dst);
+                if (copied != (ssize_t)volume->config.page_size) {
+                    SET_ERR(posix_error, copied < 0 ? errno : EIO);
                     SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
                     free(relocation.id_blob);
                     for (size_t k = 0; k < batch_count; k++)
@@ -536,13 +538,13 @@ void pcache_set_max_pages(pcache_handle               handle,
 
                 bool io_ok = true;
                 for (size_t i = 0; i < src_cnt && io_ok; i++) {
-                    off_t src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
-                    off_t dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
-                    if (pread(volume->fd, buf, volume->config.page_size, src_off) !=
-                            (ssize_t)volume->config.page_size ||
-                        pwrite(volume->fd, buf, volume->config.page_size, dst_off) !=
-                            (ssize_t)volume->config.page_size) {
-                        SET_ERR(posix_error, errno);
+                    off_t   src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
+                    off_t   dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
+                    ssize_t copied  = pread(volume->fd, buf, volume->config.page_size, src_off);
+                    if (copied == (ssize_t)volume->config.page_size)
+                        copied = pwrite(volume->fd, buf, volume->config.page_size, dst_off);
+                    if (copied != (ssize_t)volume->config.page_size) {
+                        SET_ERR(posix_error, copied < 0 ? errno : EIO);
                         SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
                         io_ok = false;
                     }
