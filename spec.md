@@ -108,7 +108,7 @@ When a page is deleted, the `id_hash` and `id` columns are set to `NULL`. The su
 
 **On `FIXED` volumes**, the next free slot is located by querying `idx_free_slots` for the lowest `ROWID` whose `id_hash IS NULL`. No in-memory bookkeeping is maintained: the index is the single source of truth for free slots. When several slots are needed within a single batch, queries are issued with a strictly increasing `rowid >` lower bound so each call returns a distinct slot.
 
-**On `FIFO` volumes**, deleted rows are left in place with `NULL` identifiers. Once the volume has reached the steady state described in [FIFO Eviction Algorithm](#fifo-eviction-algorithm), the implicit cursor advances slot-by-slot through the table, so a deleted slot is reused only when the cursor naturally reaches it — at most one full rotation later. Eviction order is therefore always determined by `ROWID`, regardless of whether a slot became free through explicit deletion or organic eviction.
+**On `FIFO` volumes**, a deletion must not leave a second empty region in the table: the implicit cursor is derived from the position of the empty slots, so a stray hole would make the cursor ambiguous and corrupt the eviction order. Every delete operation therefore ends with a **compaction pass** that merges the holes it created into the single empty run at the cursor, relocating live pages while preserving their circular age order (see [Deletion and Compaction](#deletion-and-compaction)). This makes deletion a potentially expensive operation on `FIFO` volumes — up to O(live pages) of page copies per call — whereas on `FIXED` volumes it remains O(deleted pages).
 
 ## FIFO Eviction Algorithm
 
@@ -116,7 +116,9 @@ When a page is deleted, the `id_hash` and `id` columns are set to `NULL`. The su
 
 ### Invariant
 
-Once a `FIFO` volume has been written to at least `max_pages` times, it holds *exactly* `max_pages − 1` live pages — one slot is always empty and identifies the next write target. During the brief window inside a put transaction, the volume transiently holds `max_pages − 2` live pages (between the eviction of the slot ahead of the cursor and the write of the cursor slot itself), but this state is never observable outside the transaction.
+Outside of crash-recovery windows, a `FIFO` volume holds **at most one empty run**: a maximal set of circularly consecutive slots with `NULL` identifiers. Writes fill the run from its start; once the run is exhausted, each write evicts the slot immediately after the run's end — which is always the oldest live page. Deletions preserve the invariant by compacting the holes they create into the run (see [Deletion and Compaction](#deletion-and-compaction)).
+
+Once a `FIFO` volume has been written to at least `max_pages` times and absent intervening deletions, the run has length 1: the volume holds *exactly* `max_pages − 1` live pages, and the single empty slot identifies the next write target. During the brief window inside a put transaction, the volume transiently holds one fewer live page (between the eviction of the slot ahead of the cursor and the write of the cursor slot itself), but this state is never observable outside the transaction.
 
 ### Cursor Location
 
@@ -131,9 +133,24 @@ This rule is unambiguous in every reachable state — fill-up, steady state, and
 
 Both operations are bundled into one transaction so that no intermediate state is observable to concurrent readers and a crash leaves the volume in a recoverable form.
 
+### Deletion and Compaction
+
+Deleting pages from a `FIFO` volume nulls out their rows, which would leave holes outside the cursor run and make the derived cursor ambiguous. To preserve the [invariant](#invariant), every delete operation (`pcache_delete_page`, `pcache_delete_pages`, `pcache_delete_pages_with_counter`, `pcache_delete_pages_range`) on a `FIFO` volume performs a single compaction pass after the deletion commits:
+
+- **Steady state** (the `pages` table holds `max_pages` rows): the cursor run is located *before* the rows are nulled, while the state is still unambiguous. Live pages are then walked in circular age order — starting at the slot after the run's end (the oldest) — and shifted back so they occupy consecutive slots; all holes coalesce into a single run ending at the old cursor position. The relative age order of live pages is unchanged, so subsequent evictions remain oldest-first.
+- **Fill-up phase** (fewer than `max_pages` rows): live pages are shifted toward slot `1`, preserving insertion order, and the now-`NULL` trailing rows are physically removed so the table is again contiguous.
+
+Each relocation follows the same crash-safe discipline as `pcache_defragment`: the page bytes are copied to the destination slot first, then a single transaction moves the index row; the source row stays valid until that transaction commits, so a crash at any point leaves every live page reachable. Relocations are committed one page at a time because a destination slot may be the source of an earlier move in the same pass.
+
+Compaction runs once per delete *call* (not per identifier) and costs up to O(live pages) page copies when the deleted slots are far from the cursor. Deletion on `FIFO` volumes is therefore a **costly operation** and callers should batch deletions where possible. `wipe_data_file` applies to the deleted slots before compaction, so relocated live pages are never wiped.
+
+A crash between the deletion commit and the completion of compaction can leave more than one empty run; this is repaired the next time the volume is opened (see below).
+
 ### Auto-Recovery on Open
 
 A correctly shut-down `FIFO` volume always has at least one empty slot once the fill-up phase has ended. A volume found with all `max_pages` slots occupied at open time can therefore only result from a crash between the write of slot `max_pages` and the eviction of slot `1` (the wrap-around transition). The library restores the invariant during `pcache_open` by nulling out slot `1`. The same rule is applied after `pcache_set_max_pages` reductions when they happen to leave the volume fully occupied.
+
+Additionally, a `FIFO` volume found with **more than one empty run** (a crash during delete compaction, or a volume written by an earlier library version whose deletes left holes in place) is compacted during `pcache_open` using the same procedure as [Deletion and Compaction](#deletion-and-compaction). Because the true cursor cannot be distinguished from a stray hole after the fact, the run starting at the lowest qualifying `ROWID` is taken as the cursor run; the eviction order of the affected segment is therefore approximate for one rotation. Likewise, a volume in the fill-up phase found with `NULL` rows is compacted toward slot `1` and its trailing `NULL` rows removed.
 
 ### Duplicate Detection
 
@@ -539,7 +556,7 @@ void pcache_check_pages(
 );
 ```
 
-**`pcache_delete_page`.** Marks a page as deleted in the index, recycling its row. If no page with the supplied identifier exists, the call is a silent no-op. When the `wipe_data_file` parameter is true, the corresponding region of the data file is additionally overwritten with zeros, ensuring the contents can no longer be recovered by direct inspection of the file; otherwise, only the index is updated and the old bytes remain in the data file until they are eventually reused. Implemented as a thin wrapper around `pcache_delete_pages` with `count = 1`.
+**`pcache_delete_page`.** Marks a page as deleted in the index, recycling its row. If no page with the supplied identifier exists, the call is a silent no-op. When the `wipe_data_file` parameter is true, the corresponding region of the data file is additionally overwritten with zeros, ensuring the contents can no longer be recovered by direct inspection of the file; otherwise, only the index is updated and the old bytes remain in the data file until they are eventually reused. On `FIFO` volumes, deletion additionally triggers a compaction pass to preserve the eviction order, making it a potentially costly operation — see [Deletion and Compaction](#deletion-and-compaction). Implemented as a thin wrapper around `pcache_delete_pages` with `count = 1`.
 
 ```c
 void pcache_delete_page(
@@ -553,7 +570,7 @@ void pcache_delete_page(
 );
 ```
 
-**`pcache_delete_pages`.** Deletes multiple pages in a single atomic operation. The `ids` buffer must contain `count * id_size` bytes laid out contiguously. Identifiers that are not found in the volume are silently skipped — only the matching pages are deleted — and duplicate identifiers within the batch are likewise tolerated (the second occurrence simply finds nothing to delete). The deletions of the matching pages are committed atomically in a single transaction. When `wipe_data_file` is true, each deleted page's data region is overwritten with zeros; the first wipe failure is reported and no further pages are wiped.
+**`pcache_delete_pages`.** Deletes multiple pages in a single atomic operation. The `ids` buffer must contain `count * id_size` bytes laid out contiguously. Identifiers that are not found in the volume are silently skipped — only the matching pages are deleted — and duplicate identifiers within the batch are likewise tolerated (the second occurrence simply finds nothing to delete). The deletions of the matching pages are committed atomically in a single transaction. When `wipe_data_file` is true, each deleted page's data region is overwritten with zeros; the first wipe failure is reported and no further pages are wiped. On `FIFO` volumes, one compaction pass follows the deletion to preserve the eviction order (see [Deletion and Compaction](#deletion-and-compaction)); batching deletions into a single call amortizes that cost.
 
 ```c
 void pcache_delete_pages(
@@ -575,7 +592,7 @@ UPDATE pages SET id_hash = NULL, id = NULL
 WHERE id >= first AND id <= last;
 ```
 
-Because the selection is by range rather than by exact key, an empty match (no pages in the range) is not an error. If `first` is greater than `last` (byte-by-byte comparison), the operation fails with `PCACHE_DELETE_INVALID_RANGE`. When `wipe_data_file` is `true`, each deleted page's data region is overwritten with zeros; the first wipe failure is reported and subsequent pages are not wiped. Both `first` and `last` must be exactly `id_size` bytes.
+Because the selection is by range rather than by exact key, an empty match (no pages in the range) is not an error. If `first` is greater than `last` (byte-by-byte comparison), the operation fails with `PCACHE_DELETE_INVALID_RANGE`. When `wipe_data_file` is `true`, each deleted page's data region is overwritten with zeros; the first wipe failure is reported and subsequent pages are not wiped. Both `first` and `last` must be exactly `id_size` bytes. On `FIFO` volumes, one compaction pass follows the deletion to preserve the eviction order (see [Deletion and Compaction](#deletion-and-compaction)).
 
 ```c
 void pcache_delete_pages_range(

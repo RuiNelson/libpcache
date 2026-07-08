@@ -31,26 +31,38 @@ void pcache_get_page(pcache_handle     handle,
     pcache_get_pages(handle, 1, id, page_buffer, error, sqlite_error, posix_error);
 }
 
-/* Locate the implicit FIFO cursor: the lowest empty rowid whose predecessor
- * (with wrap-around 1 -> max_pages) is occupied. Returns 1 when no slot
- * matches (volume completely empty or pages table not yet populated), -1
- * on SQLite error. */
-static int64_t find_fifo_cursor(pcache_volume *volume, int *sqlite_return_code) {
-    sqlite3_stmt *statement = volume->statement_find_fifo_cursor;
-    sqlite3_reset(statement);
-    sqlite3_clear_bindings(statement);
-    sqlite3_bind_int64(statement, 1, (int64_t)volume->config.max_pages);
-    int rc = sqlite3_step(statement);
-    if (rc == SQLITE_ROW) {
-        int64_t cursor = sqlite3_column_int64(statement, 0);
-        sqlite3_reset(statement);
-        return cursor;
+/* Merge FIFO holes left by a delete into the cursor run; reports through the
+ * delete error outputs unless a prior failure was already recorded. Returns
+ * false on failure (the next open repairs the volume). */
+static bool compact_fifo_after_delete(pcache_volume       *volume,
+                                      int64_t              run_end,
+                                      bool                 prior_failure,
+                                      pcache_delete_error *error,
+                                      int                 *sqlite_error,
+                                      int                 *posix_error) {
+    int                 sqlite_rc = 0;
+    int                 posix_rc  = 0;
+    fifo_compact_result result    = fifo_compact_holes(volume, run_end, &sqlite_rc, &posix_rc);
+    if (result == FIFO_COMPACT_OK)
+        return true;
+    if (!prior_failure) {
+        switch (result) {
+            case FIFO_COMPACT_SQLITE_ERROR:
+                SET_ERR(sqlite_error, sqlite_rc);
+                SET_ERR(error, PCACHE_DELETE_SQLITE_ERROR);
+                break;
+            case FIFO_COMPACT_IO_ERROR:
+                SET_ERR(posix_error, posix_rc);
+                SET_ERR(error, PCACHE_DELETE_IO_ERROR);
+                break;
+            case FIFO_COMPACT_OUT_OF_MEMORY:
+                SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
+                break;
+            case FIFO_COMPACT_OK:
+                break;
+        }
     }
-    sqlite3_reset(statement);
-    if (rc == SQLITE_DONE)
-        return 1;
-    *sqlite_return_code = rc;
-    return -1;
+    return false;
 }
 
 /* Caller must hold volume->mutex for the entire call. */
@@ -736,6 +748,19 @@ static void _pcache_delete_pages(pcache_volume       *volume,
         return;
     }
 
+    /* ── FIFO: anchor the cursor run while the state is still unambiguous ── */
+    const bool fifo         = volume->config.capacity_policy == PCACHE_CAPACITY_FIFO;
+    int64_t    fifo_run_end = 0;
+    if (fifo && volume->row_count == volume->config.max_pages) {
+        fifo_run_end = fifo_locate_run_end(volume, &sqlite_return_code);
+        if (fifo_run_end < 0) {
+            SET_ERR(sqlite_error, sqlite_return_code);
+            SET_ERR(error, PCACHE_DELETE_SQLITE_ERROR);
+            free(rowids);
+            return;
+        }
+    }
+
     /* ── Atomically NULL out all index rows in one transaction ── */
     {
         int sqlite_exec_rc = db_exec(volume->db, "BEGIN IMMEDIATE");
@@ -795,8 +820,13 @@ static void _pcache_delete_pages(pcache_volume       *volume,
         }
     }
 
+    /* ── FIFO: merge the freshly created holes into the cursor run ── */
+    bool compact_ok = true;
+    if (fifo)
+        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, posix_error);
+
     /* ── Optionally sync for durability ── */
-    if (durable && wipe_succeeded) {
+    if (durable && wipe_succeeded && compact_ok) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }
@@ -917,9 +947,23 @@ void pcache_delete_pages_range(pcache_handle        handle,
 
     const bool needs_rowids = wipe_data_file;
 
-    int64_t *rowids      = NULL;
-    size_t   rowid_count = 0;
-    size_t   rowid_cap   = 0;
+    int64_t *rowids        = NULL;
+    size_t   rowid_count   = 0;
+    size_t   rowid_cap     = 0;
+    int64_t  deleted_count = 0;
+
+    /* ── FIFO: anchor the cursor run while the state is still unambiguous ── */
+    const bool fifo         = volume->config.capacity_policy == PCACHE_CAPACITY_FIFO;
+    int64_t    fifo_run_end = 0;
+    if (fifo && volume->row_count == volume->config.max_pages) {
+        int cursor_rc = 0;
+        fifo_run_end  = fifo_locate_run_end(volume, &cursor_rc);
+        if (fifo_run_end < 0) {
+            SET_ERR(sqlite_error, cursor_rc);
+            SET_ERR(error, PCACHE_DELETE_SQLITE_ERROR);
+            goto unlock;
+        }
+    }
 
     /* ── BEGIN IMMEDIATE ── */
     int sqlite_exec_rc = db_exec(volume->db, "BEGIN IMMEDIATE");
@@ -999,6 +1043,8 @@ void pcache_delete_pages_range(pcache_handle        handle,
         sqlite3_bind_blob(update_stmt, 1, first, (int)id_size, SQLITE_STATIC);
         sqlite3_bind_blob(update_stmt, 2, last, (int)id_size, SQLITE_STATIC);
         rc = sqlite3_step(update_stmt);
+        if (rc == SQLITE_DONE)
+            deleted_count = sqlite3_changes(volume->db);
         sqlite3_finalize(update_stmt);
 
         if (rc != SQLITE_DONE) {
@@ -1040,8 +1086,13 @@ void pcache_delete_pages_range(pcache_handle        handle,
 
     free(rowids);
 
+    /* ── FIFO: merge the freshly created holes into the cursor run ── */
+    bool compact_ok = true;
+    if (fifo && deleted_count > 0)
+        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, posix_error);
+
     /* ── Optionally sync for durability ── */
-    if (durable && wipe_succeeded) {
+    if (durable && wipe_succeeded && compact_ok) {
         if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }

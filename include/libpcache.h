@@ -617,6 +617,11 @@ void pcache_check_pages_range(pcache_handle       handle,
  * Thin wrapper around ::pcache_delete_pages with @p count = 1.
  * If no page with @p id exists, the call is a silent no-op.
  *
+ * @note On @c FIFO volumes, deletion triggers a compaction pass that relocates live pages
+ *       to preserve the eviction order, making it a potentially **costly operation** — up
+ *       to O(live pages) of page copies. Batch deletions with ::pcache_delete_pages or
+ *       ::pcache_delete_pages_range to amortize that cost.
+ *
  * @param handle         Open volume descriptor.
  * @param id             Page identifier; must be exactly @c id_size bytes.
  * @param wipe_data_file If @c true, overwrite the page data with zeros.
@@ -642,6 +647,10 @@ void pcache_delete_page(pcache_handle        handle,
  * committed atomically in a single transaction.
  * When @p wipe_data_file is @c true, page regions are zeroed sequentially; the first
  * wipe failure is reported and subsequent pages are not wiped.
+ *
+ * @note On @c FIFO volumes, one compaction pass follows the deletion to preserve the
+ *       eviction order, costing up to O(live pages) of page copies per call — batching
+ *       deletions into a single call amortizes it.
  *
  * @param handle         Open volume descriptor.
  * @param count          Number of pages to delete.
@@ -708,6 +717,9 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
  *
  * Both @p first and @p last must be exactly @c id_size bytes. If @p first is
  * greater than @p last, the operation fails with @c PCACHE_DELETE_INVALID_RANGE.
+ *
+ * @note On @c FIFO volumes, one compaction pass follows the deletion to preserve the
+ *       eviction order, costing up to O(live pages) of page copies per call.
  *
  * @param handle         Open volume descriptor.
  * @param first          Lower bound of the identifier range (inclusive).

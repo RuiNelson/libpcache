@@ -20,7 +20,7 @@ A **volume** is two files working as one: a data file that holds the raw page by
 Pick the policy that suits your workload at creation time:
 
 - **FIXED** — the volume holds up to `max_pages` pages. Deleted slots are recycled immediately for the next write.
-- **FIFO** — the volume acts as a **circular buffer**. When full, the oldest page is evicted automatically to make room for the new one.
+- **FIFO** — the volume acts as a **circular buffer**. When full, the oldest page is evicted automatically to make room for the new one. Deleting pages explicitly is supported but **costly**: each delete call runs a compaction pass that relocates live pages to keep the eviction order intact.
 
 ### Elastic
 

@@ -1,6 +1,7 @@
 #include "db.h"
 #include "handle.h"
 #include "macros.h"
+#include "pages_util.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -321,6 +322,92 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
                     SET_ERR(sqlite_error, sqlite_rc);
                     SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
                     goto fail_locked;
+                }
+            }
+        }
+
+        /* Auto-recovery: a volume with more than one empty run (crash during
+         * delete compaction, or holes left by a pre-compaction library
+         * version) violates the single-empty-run invariant that makes the
+         * implicit cursor unambiguous. Merge the runs before handing the
+         * volume out. */
+        {
+            bool needs_compaction = false;
+            if (volume->row_count == volume->config.max_pages) {
+                sqlite3_stmt *runs_stmt  = NULL;
+                int64_t       run_starts = 0;
+                int runs_rc = sqlite3_prepare_v2(volume->db,
+                                                 "SELECT COUNT(*) FROM pages p WHERE p.id_hash IS NULL AND EXISTS ("
+                                                 "  SELECT 1 FROM pages q WHERE q.rowid = CASE WHEN p.rowid = 1 THEN ?1"
+                                                 "  ELSE p.rowid - 1 END AND q.id_hash IS NOT NULL)",
+                                                 -1,
+                                                 &runs_stmt,
+                                                 NULL);
+                if (runs_rc == SQLITE_OK) {
+                    sqlite3_bind_int64(runs_stmt, 1, (int64_t)volume->config.max_pages);
+                    runs_rc = sqlite3_step(runs_stmt);
+                    if (runs_rc == SQLITE_ROW) {
+                        run_starts = sqlite3_column_int64(runs_stmt, 0);
+                        runs_rc    = SQLITE_OK;
+                    }
+                    sqlite3_finalize(runs_stmt);
+                }
+                if (runs_rc != SQLITE_OK) {
+                    SET_ERR(sqlite_error, runs_rc);
+                    SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
+                    goto fail_locked;
+                }
+                needs_compaction = run_starts > 1;
+            } else if (volume->row_count > 0) {
+                /* Fill-up phase must have no NULL rows at all. */
+                sqlite3_stmt *hole_stmt = NULL;
+                int           hole_rc   = sqlite3_prepare_v2(
+                    volume->db, "SELECT 1 FROM pages WHERE id_hash IS NULL LIMIT 1", -1, &hole_stmt, NULL);
+                if (hole_rc == SQLITE_OK) {
+                    hole_rc = sqlite3_step(hole_stmt);
+                    sqlite3_finalize(hole_stmt);
+                    if (hole_rc == SQLITE_ROW) {
+                        needs_compaction = true;
+                        hole_rc          = SQLITE_OK;
+                    } else if (hole_rc == SQLITE_DONE) {
+                        hole_rc = SQLITE_OK;
+                    }
+                }
+                if (hole_rc != SQLITE_OK) {
+                    SET_ERR(sqlite_error, hole_rc);
+                    SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
+                    goto fail_locked;
+                }
+            }
+
+            if (needs_compaction) {
+                int64_t run_end = 0;
+                if (volume->row_count == volume->config.max_pages) {
+                    int cursor_rc = 0;
+                    run_end       = fifo_locate_run_end(volume, &cursor_rc);
+                    if (run_end < 0) {
+                        SET_ERR(sqlite_error, cursor_rc);
+                        SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
+                        goto fail_locked;
+                    }
+                }
+
+                int compact_sqlite_rc = 0;
+                int compact_posix_rc  = 0;
+                switch (fifo_compact_holes(volume, run_end, &compact_sqlite_rc, &compact_posix_rc)) {
+                    case FIFO_COMPACT_OK:
+                        break;
+                    case FIFO_COMPACT_SQLITE_ERROR:
+                        SET_ERR(sqlite_error, compact_sqlite_rc);
+                        SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
+                        goto fail_locked;
+                    case FIFO_COMPACT_IO_ERROR:
+                        SET_ERR(posix_error, compact_posix_rc);
+                        SET_ERR(error, PCACHE_OPEN_IO_ERROR);
+                        goto fail_locked;
+                    case FIFO_COMPACT_OUT_OF_MEMORY:
+                        SET_ERR(error, PCACHE_OPEN_OUT_OF_MEMORY);
+                        goto fail_locked;
                 }
             }
         }

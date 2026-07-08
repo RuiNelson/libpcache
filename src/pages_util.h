@@ -35,6 +35,42 @@ typedef enum {
 /** @brief Check whether the flat ID buffer contains any duplicate entry. */
 batch_dup_result batch_has_duplicate_ids(const void *ids, size_t count, size_t id_size);
 
+/**
+ * @brief Locate the implicit FIFO cursor: the lowest empty rowid whose predecessor
+ *        (with wrap-around 1 -> max_pages) is occupied.
+ *
+ * Returns 1 when no slot matches (volume completely empty or pages table not yet
+ * populated), -1 on SQLite error.
+ */
+int64_t find_fifo_cursor(pcache_volume *volume, int *sqlite_return_code);
+
+/**
+ * @brief Rowid of the last empty slot of the FIFO cursor run.
+ *
+ * Only meaningful while the volume satisfies the single-empty-run invariant.
+ * Returns 0 when the volume holds no live pages, -1 on SQLite error.
+ */
+int64_t fifo_locate_run_end(pcache_volume *volume, int *sqlite_return_code);
+
+typedef enum {
+    FIFO_COMPACT_OK,            /**< All holes merged into the cursor run. */
+    FIFO_COMPACT_SQLITE_ERROR,  /**< Index operation failed. */
+    FIFO_COMPACT_IO_ERROR,      /**< Page copy in the data file failed. */
+    FIFO_COMPACT_OUT_OF_MEMORY, /**< Scratch allocation failed. */
+} fifo_compact_result;
+
+/**
+ * @brief Merge every empty run of a FIFO volume into the single run ending at
+ *        @p run_end, relocating live pages while preserving circular age order.
+ *
+ * When the pages table holds fewer than max_pages rows (fill-up phase),
+ * @p run_end is ignored: pages compact toward rowid 1 and the trailing NULL
+ * rows are removed. Each relocation is committed in its own transaction so a
+ * crash never leaves a live page unreachable. Caller must hold volume->mutex.
+ */
+fifo_compact_result
+fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *posix_return_code);
+
 /** @brief Validate arguments for ::pcache_put_pages_with_counter. */
 bool validate_with_counter_args(size_t            id_size,
                                 size_t            count,

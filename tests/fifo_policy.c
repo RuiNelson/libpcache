@@ -4,6 +4,7 @@
 #include "libpcache.h"
 #include "tst.h"
 
+#include <sqlite3.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -27,6 +28,64 @@ static bool exists(pcache_handle handle, uint32_t index) {
     make_id_with_index(id, ID_SIZE, index);
     pcache_check_error check_error = (pcache_check_error)-1;
     return pcache_check_page(handle, id, &check_error, NULL);
+}
+
+/* Retrieve the page for `index` and verify its bytes match what put_one stored. */
+static bool content_ok(pcache_handle handle, uint32_t index) {
+    unsigned char id[ID_SIZE], expected[PAGE_SIZE], actual[PAGE_SIZE];
+    make_id_with_index(id, ID_SIZE, index);
+    make_page_with_index(expected, PAGE_SIZE, index);
+    pcache_get_error get_error = (pcache_get_error)-1;
+    pcache_get_page(handle, id, actual, &get_error, NULL, NULL);
+    return get_error == PCACHE_GET_OK && memcmp(expected, actual, PAGE_SIZE) == 0;
+}
+
+static void delete_one(pcache_handle handle, uint32_t index, bool wipe) {
+    unsigned char id[ID_SIZE];
+    make_id_with_index(id, ID_SIZE, index);
+    pcache_delete_error delete_error = (pcache_delete_error)-1;
+    pcache_delete_page(handle, id, wipe, true, &delete_error, NULL, NULL);
+}
+
+/* Number of empty runs in the pages table: empty slots whose circular
+ * predecessor (max_pages wraps to before 1) is occupied. */
+static long long count_empty_runs(const char *database_path, long long max_pages) {
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(database_path, &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK)
+        return -1;
+    sqlite3_stmt *stmt = NULL;
+    long long     runs = -1;
+    if (sqlite3_prepare_v2(db,
+                           "SELECT COUNT(*) FROM pages p WHERE p.id_hash IS NULL AND EXISTS ("
+                           "  SELECT 1 FROM pages q WHERE q.rowid = CASE WHEN p.rowid = 1 THEN ?1"
+                           "  ELSE p.rowid - 1 END AND q.id_hash IS NOT NULL)",
+                           -1,
+                           &stmt,
+                           NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, max_pages);
+        if (sqlite3_step(stmt) == SQLITE_ROW)
+            runs = sqlite3_column_int64(stmt, 0);
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(db);
+    return runs;
+}
+
+/* Null out one row directly, simulating a crash between a delete commit and
+ * its compaction pass (or a volume written by a pre-compaction library). */
+static bool null_row_directly(const char *database_path, long long rowid) {
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(database_path, &db, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK)
+        return false;
+    sqlite3_stmt *stmt = NULL;
+    bool          ok   = false;
+    if (sqlite3_prepare_v2(db, "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &stmt, NULL) == SQLITE_OK) {
+        sqlite3_bind_int64(stmt, 1, rowid);
+        ok = sqlite3_step(stmt) == SQLITE_DONE;
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(db);
+    return ok;
 }
 
 tstsuite("FIFO policy") {
@@ -254,6 +313,181 @@ tstsuite("FIFO policy") {
         tstcheck(!new_results[0] && !new_results[1] && !new_results[2], "rolled-back ids are absent");
 
         pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("delete in steady state preserves the FIFO eviction order") {
+        test_paths paths;
+        test_paths_init(&paths, "fifo_delete_steady");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        /* Ten puts: ids 0..2 evicted, live set {3..9}, oldest 3, newest 9. */
+        for (uint32_t i = 0; i <= 9; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "put OK");
+
+        /* Delete id 8 — its slot sits below the cursor, the hijack scenario. */
+        delete_one(handle, 8, false);
+
+        pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == MAX_PAGES - 2, "one page deleted");
+
+        /* The next put must not evict anyone — the volume has room. */
+        tstcheck(put_one(handle, 10) == PCACHE_PUT_OK, "put after delete OK");
+        tstcheck(exists(handle, 9), "newest page survives a put after delete");
+        bool all_live = true;
+        for (uint32_t i = 3; i <= 7; i++)
+            all_live = all_live && exists(handle, i);
+        tstcheck(all_live && exists(handle, 10), "full live set intact after refill");
+        tstcheck(content_ok(handle, 9) && content_ok(handle, 3), "relocated and stationary bytes intact");
+
+        /* Further puts evict strictly oldest-first: 3, then 4. */
+        tstcheck(put_one(handle, 11) == PCACHE_PUT_OK, "put OK");
+        tstcheck(!exists(handle, 3) && exists(handle, 4), "oldest (3) evicted first");
+        tstcheck(put_one(handle, 12) == PCACHE_PUT_OK, "put OK");
+        tstcheck(!exists(handle, 4) && exists(handle, 5), "next oldest (4) evicted second");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("delete during fill-up does not cause premature eviction") {
+        test_paths paths;
+        test_paths_init(&paths, "fifo_delete_fillup");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        /* No preallocation: the volume grows row by row (fill-up phase). */
+        pcache_create_error create_error = (pcache_create_error)-1;
+        pcache_create(&paths.pair, &config, false, false, &create_error, NULL, NULL);
+        tstcheck(create_error == PCACHE_CREATE_OK, "create OK");
+        pcache_open_error open_error = (pcache_open_error)-1;
+        pcache_handle     handle     = pcache_open(&paths.pair, &open_error, NULL, NULL);
+        tstcheck(open_error == PCACHE_OPEN_OK, "open OK");
+
+        for (uint32_t i = 0; i <= 2; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "fill-up put OK");
+        delete_one(handle, 1, false);
+
+        /* Refill: with 2 live pages and capacity 8, five more puts fit without
+         * evicting anyone. */
+        for (uint32_t i = 3; i <= 7; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "refill put OK");
+        tstcheck(exists(handle, 0), "id 0 not evicted while capacity remains");
+
+        pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == MAX_PAGES - 1, "volume filled to max_pages - 1");
+
+        /* The put that reaches capacity evicts the oldest (0), nothing else. */
+        tstcheck(put_one(handle, 8) == PCACHE_PUT_OK, "capacity put OK");
+        tstcheck(!exists(handle, 0), "oldest (0) evicted at capacity");
+        bool rest = exists(handle, 2);
+        for (uint32_t i = 3; i <= 8; i++)
+            rest = rest && exists(handle, i);
+        tstcheck(rest, "remaining pages all alive");
+        tstcheck(content_ok(handle, 2), "page relocated by fill-up compaction has intact bytes");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("range delete with wipe preserves eviction order and relocated bytes") {
+        test_paths paths;
+        test_paths_init(&paths, "fifo_delete_range");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        /* Live set {3..9}, oldest 3, newest 9. */
+        for (uint32_t i = 0; i <= 9; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "put OK");
+
+        unsigned char first[ID_SIZE], last[ID_SIZE];
+        make_id_with_index(first, ID_SIZE, 4);
+        make_id_with_index(last, ID_SIZE, 6);
+        pcache_delete_error delete_error = (pcache_delete_error)-1;
+        pcache_delete_pages_range(handle, first, last, /*wipe*/ true, true, &delete_error, NULL, NULL);
+        tstcheck(delete_error == PCACHE_DELETE_OK, "range delete OK");
+
+        pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == 4, "three pages deleted");
+        tstcheck(content_ok(handle, 3) && content_ok(handle, 7) && content_ok(handle, 8) && content_ok(handle, 9),
+                 "wipe did not touch relocated live pages");
+
+        /* Three refills reuse the freed capacity without evicting anyone. */
+        for (uint32_t i = 10; i <= 12; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "refill put OK");
+        tstcheck(exists(handle, 3), "oldest (3) not evicted while capacity remains");
+        counts = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == MAX_PAGES - 1, "volume back at max_pages - 1");
+
+        /* The next put evicts the oldest. */
+        tstcheck(put_one(handle, 13) == PCACHE_PUT_OK, "capacity put OK");
+        tstcheck(!exists(handle, 3) && exists(handle, 7), "oldest (3) evicted, next oldest (7) alive");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("open repairs a FIFO volume left with two empty runs") {
+        test_paths paths;
+        test_paths_init(&paths, "fifo_open_repair");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIFO,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        /* Live set {3..9}; the cursor slot is the single empty run. */
+        for (uint32_t i = 0; i <= 9; i++)
+            tstcheck(put_one(handle, i) == PCACHE_PUT_OK, "put OK");
+        pcache_close(handle, NULL, NULL, NULL);
+
+        /* Null a live row directly: the volume now has two empty runs, as a
+         * crash between a delete commit and its compaction would leave it. */
+        tstcheck(null_row_directly(paths.database_path, 6), "inject stray hole");
+        tstcheck(count_empty_runs(paths.database_path, MAX_PAGES) == 2, "two empty runs before open");
+
+        pcache_open_error open_error = (pcache_open_error)-1;
+        handle                       = pcache_open(&paths.pair, &open_error, NULL, NULL);
+        tstcheck(open_error == PCACHE_OPEN_OK, "reopen OK");
+
+        pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
+        pcache_page_count               counts      = pcache_inspect_page_count(handle, &count_error, NULL);
+        tstcheck(counts.used == 6, "live count preserved by repair");
+
+        bool survivors_ok = true;
+        for (uint32_t i = 3; i <= 9; i++) {
+            if (i == 5)
+                continue; /* rowid 6 held id 5 */
+            survivors_ok = survivors_ok && content_ok(handle, i);
+        }
+        tstcheck(survivors_ok, "all surviving pages readable with intact bytes");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        tstcheck(count_empty_runs(paths.database_path, MAX_PAGES) == 1, "single empty run after repair");
+
         test_paths_cleanup(&paths);
     }
 }

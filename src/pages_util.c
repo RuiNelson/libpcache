@@ -102,6 +102,232 @@ ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, of
     return pwrite(volume->fd, page, page_size, byte_offset);
 }
 
+int64_t find_fifo_cursor(pcache_volume *volume, int *sqlite_return_code) {
+    sqlite3_stmt *statement = volume->statement_find_fifo_cursor;
+    sqlite3_reset(statement);
+    sqlite3_clear_bindings(statement);
+    sqlite3_bind_int64(statement, 1, (int64_t)volume->config.max_pages);
+    int rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        int64_t cursor = sqlite3_column_int64(statement, 0);
+        sqlite3_reset(statement);
+        return cursor;
+    }
+    sqlite3_reset(statement);
+    if (rc == SQLITE_DONE)
+        return 1;
+    *sqlite_return_code = rc;
+    return -1;
+}
+
+/* Lowest occupied rowid strictly greater than `lower_bound` (pass 0 for the
+ * global minimum). Returns 0 when no such row exists, -1 on SQLite error. */
+static int64_t lowest_occupied_rowid_above(pcache_volume *volume, int64_t lower_bound, int *sqlite_return_code) {
+    sqlite3_stmt *statement = NULL;
+    int           rc        = sqlite3_prepare_v2(
+        volume->db, "SELECT MIN(rowid) FROM pages WHERE id_hash IS NOT NULL AND rowid > ?", -1, &statement, NULL);
+    if (rc != SQLITE_OK) {
+        *sqlite_return_code = rc;
+        return -1;
+    }
+    sqlite3_bind_int64(statement, 1, lower_bound);
+    rc            = sqlite3_step(statement);
+    int64_t rowid = 0;
+    if (rc == SQLITE_ROW && sqlite3_column_type(statement, 0) != SQLITE_NULL)
+        rowid = sqlite3_column_int64(statement, 0);
+    sqlite3_finalize(statement);
+    if (rc != SQLITE_ROW) {
+        *sqlite_return_code = rc;
+        return -1;
+    }
+    return rowid;
+}
+
+int64_t fifo_locate_run_end(pcache_volume *volume, int *sqlite_return_code) {
+    int64_t cursor = find_fifo_cursor(volume, sqlite_return_code);
+    if (cursor < 0)
+        return -1;
+
+    int64_t next_occupied = lowest_occupied_rowid_above(volume, cursor, sqlite_return_code);
+    if (next_occupied < 0)
+        return -1;
+    if (next_occupied > 0)
+        return next_occupied - 1;
+
+    /* The run reaches the end of the table: wrap to the lowest occupied rowid. */
+    int64_t first_occupied = lowest_occupied_rowid_above(volume, 0, sqlite_return_code);
+    if (first_occupied < 0)
+        return -1;
+    if (first_occupied == 0)
+        return 0; /* no live pages at all */
+    return first_occupied == 1 ? (int64_t)volume->config.max_pages : first_occupied - 1;
+}
+
+fifo_compact_result
+fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *posix_return_code) {
+    const int64_t max_pages = (int64_t)volume->config.max_pages;
+    const size_t  page_size = volume->config.page_size;
+    const size_t  id_size   = volume->config.id_size;
+    /* Steady state (all rows exist): compact circularly around the cursor run.
+     * Fill-up phase: compact toward rowid 1 and drop the trailing NULL rows. */
+    const bool circular = volume->row_count == volume->config.max_pages;
+
+    if (!circular)
+        run_end = (int64_t)volume->row_count;
+
+    /* ── Collect live rowids in circular age order (oldest first) ── */
+    int64_t *rowids   = NULL;
+    size_t   live_cnt = 0;
+    size_t   live_cap = 0;
+    {
+        sqlite3_stmt *statement = NULL;
+        int           rc =
+            sqlite3_prepare_v2(volume->db,
+                               "SELECT rowid FROM pages WHERE id_hash IS NOT NULL ORDER BY (rowid - ?1 - 1 + ?2) % ?2",
+                               -1,
+                               &statement,
+                               NULL);
+        if (rc != SQLITE_OK) {
+            *sqlite_return_code = rc;
+            return FIFO_COMPACT_SQLITE_ERROR;
+        }
+        sqlite3_bind_int64(statement, 1, run_end);
+        sqlite3_bind_int64(statement, 2, max_pages);
+        while ((rc = sqlite3_step(statement)) == SQLITE_ROW) {
+            if (live_cnt >= live_cap) {
+                size_t   cap   = live_cap ? live_cap * 2 : 64;
+                int64_t *grown = realloc(rowids, cap * sizeof *grown);
+                if (!grown) {
+                    sqlite3_finalize(statement);
+                    free(rowids);
+                    return FIFO_COMPACT_OUT_OF_MEMORY;
+                }
+                rowids   = grown;
+                live_cap = cap;
+            }
+            rowids[live_cnt++] = sqlite3_column_int64(statement, 0);
+        }
+        sqlite3_finalize(statement);
+        if (rc != SQLITE_DONE) {
+            free(rowids);
+            *sqlite_return_code = rc;
+            return FIFO_COMPACT_SQLITE_ERROR;
+        }
+    }
+
+    /* ── Relocate out-of-place pages, one crash-safe transaction each ──
+     * The i-th oldest live page belongs at the i-th slot after the run's end.
+     * A destination is either a pre-existing hole or a slot vacated by an
+     * earlier move, so each transaction must commit before the next byte copy
+     * may overwrite its source. */
+    fifo_compact_result result = FIFO_COMPACT_OK;
+    if (live_cnt > 0) {
+        uint8_t      *page_buf         = malloc(page_size);
+        uint8_t      *id_buf           = malloc(id_size);
+        sqlite3_stmt *select_statement = NULL;
+        int           rc =
+            sqlite3_prepare_v2(volume->db, "SELECT id_hash, id FROM pages WHERE rowid=?", -1, &select_statement, NULL);
+        if (!page_buf || !id_buf) {
+            result = FIFO_COMPACT_OUT_OF_MEMORY;
+        } else if (rc != SQLITE_OK) {
+            *sqlite_return_code = rc;
+            result              = FIFO_COMPACT_SQLITE_ERROR;
+        }
+
+        for (size_t i = 0; i < live_cnt && result == FIFO_COMPACT_OK; i++) {
+            int64_t src = rowids[i];
+            int64_t dst = circular ? ((run_end + (int64_t)i) % max_pages) + 1 : (int64_t)i + 1;
+            if (src == dst)
+                continue;
+
+            /* Fetch the identifier of the source row. */
+            sqlite3_reset(select_statement);
+            sqlite3_clear_bindings(select_statement);
+            sqlite3_bind_int64(select_statement, 1, src);
+            rc = sqlite3_step(select_statement);
+            if (rc != SQLITE_ROW) {
+                *sqlite_return_code = rc == SQLITE_DONE ? SQLITE_CORRUPT : rc;
+                result              = FIFO_COMPACT_SQLITE_ERROR;
+                break;
+            }
+            int64_t     id_hash  = sqlite3_column_int64(select_statement, 0);
+            const void *id_blob  = sqlite3_column_blob(select_statement, 1);
+            int         id_bytes = sqlite3_column_bytes(select_statement, 1);
+            if (id_bytes < 0 || (size_t)id_bytes > id_size)
+                id_bytes = (int)id_size;
+            if (id_blob)
+                memcpy(id_buf, id_blob, (size_t)id_bytes);
+            else
+                id_bytes = 0;
+            sqlite3_reset(select_statement);
+
+            /* Copy the page bytes to the destination slot. */
+            ssize_t io = pread(volume->fd, page_buf, page_size, rowid_to_offset(src, page_size));
+            if (io == (ssize_t)page_size)
+                io = pwrite(volume->fd, page_buf, page_size, rowid_to_offset(dst, page_size));
+            if (io != (ssize_t)page_size) {
+                *posix_return_code = io < 0 ? errno : EIO;
+                result             = FIFO_COMPACT_IO_ERROR;
+                break;
+            }
+
+            /* Move the index row: the source stays valid until the commit. */
+            rc = db_exec(volume->db, "BEGIN IMMEDIATE");
+            if (rc != SQLITE_OK) {
+                *sqlite_return_code = rc;
+                result              = FIFO_COMPACT_SQLITE_ERROR;
+                break;
+            }
+            sqlite3_stmt *update_statement = volume->statement_update_slot;
+            sqlite3_reset(update_statement);
+            sqlite3_clear_bindings(update_statement);
+            sqlite3_bind_int64(update_statement, 1, id_hash);
+            sqlite3_bind_blob(update_statement, 2, id_buf, id_bytes, SQLITE_STATIC);
+            sqlite3_bind_int64(update_statement, 3, dst);
+            rc = sqlite3_step(update_statement);
+            sqlite3_reset(update_statement);
+            if (rc == SQLITE_DONE) {
+                sqlite3_stmt *null_statement = volume->statement_delete;
+                sqlite3_reset(null_statement);
+                sqlite3_clear_bindings(null_statement);
+                sqlite3_bind_int64(null_statement, 1, src);
+                rc = sqlite3_step(null_statement);
+                sqlite3_reset(null_statement);
+            }
+            if (rc == SQLITE_DONE)
+                rc = db_exec(volume->db, "COMMIT");
+            else {
+                db_exec(volume->db, "ROLLBACK");
+            }
+            if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+                *sqlite_return_code = rc;
+                result              = FIFO_COMPACT_SQLITE_ERROR;
+                break;
+            }
+        }
+
+        if (select_statement)
+            sqlite3_finalize(select_statement);
+        free(page_buf);
+        free(id_buf);
+    }
+    free(rowids);
+    if (result != FIFO_COMPACT_OK)
+        return result;
+
+    /* ── Fill-up: drop the trailing NULL rows so the table is contiguous ── */
+    if (!circular) {
+        int rc = db_exec_bind_int64(volume->db, "DELETE FROM pages WHERE rowid > ?", (int64_t)live_cnt);
+        if (rc != SQLITE_OK) {
+            *sqlite_return_code = rc;
+            return FIFO_COMPACT_SQLITE_ERROR;
+        }
+        volume->row_count = live_cnt;
+    }
+
+    return FIFO_COMPACT_OK;
+}
+
 static bool is_valid_endianness(pcache_endianness endianness) {
     switch (endianness) {
         case PCACHE_ENDIANNESS_NATIVE:
