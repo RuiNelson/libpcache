@@ -71,6 +71,10 @@ A volume consists of two files: a **data file** (fixed-size pages laid out seque
 - Error enum values are assigned explicitly to preserve binary compatibility.
 - Error enumerations live in `libpcache_errors.h`, which is transitively included by `libpcache.h`.
 
+## Commits
+
+Use the [Conventional Commits](https://www.conventionalcommits.org) specification for commit messages (e.g. `fix:`, `feat:`, `docs:`, `chore:`).
+
 ## Code Style
 
 - Never write code in headers. Headers contain only declarations, type definitions, `#define` constants and macros — no function bodies, no `static inline` implementations.
