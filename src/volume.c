@@ -261,12 +261,23 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
     volume->config.id_size   = id_size;
 
     /* ── Total row count ── */
+    /* A silent failure here would leave row_count at 0, sending later FIFO
+     * puts down the fill-up path and inserting rows beyond max_pages. */
     {
-        sqlite3_stmt *statement;
-        if (sqlite3_prepare_v2(volume->db, "SELECT COUNT(*) FROM pages", -1, &statement, NULL) == SQLITE_OK) {
-            if (sqlite3_step(statement) == SQLITE_ROW)
+        sqlite3_stmt *statement = NULL;
+        int           count_rc  = sqlite3_prepare_v2(volume->db, "SELECT COUNT(*) FROM pages", -1, &statement, NULL);
+        if (count_rc == SQLITE_OK) {
+            count_rc = sqlite3_step(statement);
+            if (count_rc == SQLITE_ROW) {
                 volume->row_count = (size_t)sqlite3_column_int64(statement, 0);
+                count_rc          = SQLITE_OK;
+            }
             sqlite3_finalize(statement);
+        }
+        if (count_rc != SQLITE_OK) {
+            SET_ERR(sqlite_error, count_rc);
+            SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
+            goto fail_locked;
         }
     }
 
