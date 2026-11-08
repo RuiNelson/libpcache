@@ -8,6 +8,93 @@
  * Each batch processes up to DEFAGMENT_BATCH_SIZE pages in one transaction. */
 #define DEFAGMENT_BATCH_SIZE 100
 
+typedef struct defragment_relocation {
+    int64_t src_rowid;
+    int64_t dst_rowid;
+    int64_t id_hash;
+    void   *id_blob;
+    int     id_blob_len;
+} defragment_relocation;
+
+/* Commits a batch of relocations in a single transaction: for each move, drop
+ * any NULL row at the destination, insert the live row there and null out the
+ * source. Frees every id blob in the batch. Returns SQLITE_OK on success. */
+static int commit_relocation_batch(sqlite3 *db, defragment_relocation *batch, size_t batch_count) {
+    int sqlite_return_code = db_exec(db, "BEGIN IMMEDIATE");
+    if (sqlite_return_code != SQLITE_OK) {
+        for (size_t k = 0; k < batch_count; k++)
+            free(batch[k].id_blob);
+        return sqlite_return_code;
+    }
+
+    sqlite3_stmt *del_stmt  = NULL;
+    sqlite3_stmt *ins_stmt  = NULL;
+    sqlite3_stmt *null_stmt = NULL;
+
+    sqlite_return_code =
+        sqlite3_prepare_v2(db, "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &del_stmt, NULL);
+    if (sqlite_return_code == SQLITE_OK)
+        sqlite_return_code =
+            sqlite3_prepare_v2(db, "INSERT INTO pages(rowid, id_hash, id) VALUES(?, ?, ?)", -1, &ins_stmt, NULL);
+    if (sqlite_return_code == SQLITE_OK)
+        sqlite_return_code =
+            sqlite3_prepare_v2(db, "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &null_stmt, NULL);
+
+    if (sqlite_return_code == SQLITE_OK) {
+        for (size_t k = 0; k < batch_count; k++) {
+            /* Delete NULL row at destination */
+            sqlite3_reset(del_stmt);
+            sqlite3_clear_bindings(del_stmt);
+            sqlite3_bind_int64(del_stmt, 1, batch[k].dst_rowid);
+            if (sqlite3_step(del_stmt) != SQLITE_DONE) {
+                sqlite_return_code = sqlite3_errcode(db);
+                break;
+            }
+
+            /* Insert at destination */
+            sqlite3_reset(ins_stmt);
+            sqlite3_clear_bindings(ins_stmt);
+            sqlite3_bind_int64(ins_stmt, 1, batch[k].dst_rowid);
+            sqlite3_bind_int64(ins_stmt, 2, batch[k].id_hash);
+            if (batch[k].id_blob && batch[k].id_blob_len > 0)
+                sqlite3_bind_blob(ins_stmt, 3, batch[k].id_blob, batch[k].id_blob_len, SQLITE_STATIC);
+            else
+                sqlite3_bind_null(ins_stmt, 3);
+            int step_rc = sqlite3_step(ins_stmt);
+            if (step_rc != SQLITE_DONE && step_rc != SQLITE_ROW) {
+                sqlite_return_code = sqlite3_errcode(db);
+                break;
+            }
+
+            /* Null out source */
+            sqlite3_reset(null_stmt);
+            sqlite3_clear_bindings(null_stmt);
+            sqlite3_bind_int64(null_stmt, 1, batch[k].src_rowid);
+            if (sqlite3_step(null_stmt) != SQLITE_DONE) {
+                sqlite_return_code = sqlite3_errcode(db);
+                break;
+            }
+        }
+    }
+
+    if (del_stmt)
+        sqlite3_finalize(del_stmt);
+    if (ins_stmt)
+        sqlite3_finalize(ins_stmt);
+    if (null_stmt)
+        sqlite3_finalize(null_stmt);
+
+    for (size_t k = 0; k < batch_count; k++)
+        free(batch[k].id_blob);
+
+    if (sqlite_return_code == SQLITE_OK)
+        sqlite_return_code = db_exec(db, "COMMIT");
+    else
+        db_exec(db, "ROLLBACK");
+
+    return sqlite_return_code;
+}
+
 #ifdef PCACHE_TESTING
 static size_t s_test_defragment_metadata_fail_after;
 
@@ -88,13 +175,7 @@ void pcache_defragment(pcache_handle            handle,
             goto unlock;
         }
 
-        typedef struct {
-            int64_t src_rowid;
-            int64_t dst_rowid;
-            int64_t id_hash;
-            void   *id_blob;
-            int     id_blob_len;
-        } relocation_t;
+        typedef defragment_relocation relocation_t;
 
         relocation_t *batch = malloc(DEFAGMENT_BATCH_SIZE * sizeof *batch);
         if (!batch) {
@@ -112,6 +193,23 @@ void pcache_defragment(pcache_handle            handle,
             int64_t next_compact = (int64_t)(i + 1);
 
             if (rowid != next_compact) {
+                /* The destination may be the source of a move that is still
+                 * pending: the committed index still points that page there.
+                 * Commit the batch before overwriting the slot. Sources are
+                 * ascending, so comparing with the first one is enough. */
+                if (batch_count > 0 && next_compact >= batch[0].src_rowid) {
+                    sqlite_return_code = commit_relocation_batch(volume->db, batch, batch_count);
+                    batch_count        = 0;
+                    if (sqlite_return_code != SQLITE_OK) {
+                        SET_ERR(sqlite_error, sqlite_return_code);
+                        SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
+                        free(batch);
+                        free(buf);
+                        free(rowids);
+                        goto unlock;
+                    }
+                }
+
                 relocation_t relocation = {
                     .src_rowid   = rowid,
                     .dst_rowid   = next_compact,
@@ -217,86 +315,7 @@ void pcache_defragment(pcache_handle            handle,
 
             /* Process batch when full or at end of loop */
             if (batch_count >= DEFAGMENT_BATCH_SIZE || (i == live_cnt - 1 && batch_count > 0)) {
-                sqlite_return_code = db_exec(volume->db, "BEGIN IMMEDIATE");
-                if (sqlite_return_code != SQLITE_OK) {
-                    SET_ERR(sqlite_error, sqlite_return_code);
-                    SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);
-                    for (size_t k = 0; k < batch_count; k++)
-                        free(batch[k].id_blob);
-                    free(batch);
-                    free(buf);
-                    free(rowids);
-                    goto unlock;
-                }
-
-                sqlite3_stmt *del_stmt  = NULL;
-                sqlite3_stmt *ins_stmt  = NULL;
-                sqlite3_stmt *null_stmt = NULL;
-
-                sqlite_return_code = sqlite3_prepare_v2(
-                    volume->db, "DELETE FROM pages WHERE rowid=? AND id_hash IS NULL", -1, &del_stmt, NULL);
-                if (sqlite_return_code == SQLITE_OK)
-                    sqlite_return_code = sqlite3_prepare_v2(
-                        volume->db, "INSERT INTO pages(rowid, id_hash, id) VALUES(?, ?, ?)", -1, &ins_stmt, NULL);
-                if (sqlite_return_code == SQLITE_OK)
-                    sqlite_return_code = sqlite3_prepare_v2(
-                        volume->db, "UPDATE pages SET id_hash=NULL, id=NULL WHERE rowid=?", -1, &null_stmt, NULL);
-
-                if (sqlite_return_code == SQLITE_OK) {
-                    for (size_t k = 0; k < batch_count; k++) {
-                        /* Delete NULL row at destination */
-                        sqlite3_reset(del_stmt);
-                        sqlite3_clear_bindings(del_stmt);
-                        sqlite3_bind_int64(del_stmt, 1, batch[k].dst_rowid);
-                        int del_rc = sqlite3_step(del_stmt);
-                        if (del_rc != SQLITE_DONE) {
-                            sqlite_return_code = sqlite3_errcode(volume->db);
-                            break;
-                        }
-
-                        /* Insert at destination */
-                        sqlite3_reset(ins_stmt);
-                        sqlite3_clear_bindings(ins_stmt);
-                        sqlite3_bind_int64(ins_stmt, 1, batch[k].dst_rowid);
-                        sqlite3_bind_int64(ins_stmt, 2, batch[k].id_hash);
-                        if (batch[k].id_blob && batch[k].id_blob_len > 0)
-                            sqlite3_bind_blob(ins_stmt, 3, batch[k].id_blob, batch[k].id_blob_len, SQLITE_STATIC);
-                        else
-                            sqlite3_bind_null(ins_stmt, 3);
-                        int step_rc = sqlite3_step(ins_stmt);
-                        if (step_rc != SQLITE_DONE && step_rc != SQLITE_ROW) {
-                            sqlite_return_code = sqlite3_errcode(volume->db);
-                            break;
-                        }
-
-                        /* Null out source */
-                        sqlite3_reset(null_stmt);
-                        sqlite3_clear_bindings(null_stmt);
-                        sqlite3_bind_int64(null_stmt, 1, batch[k].src_rowid);
-                        step_rc = sqlite3_step(null_stmt);
-                        if (step_rc != SQLITE_DONE) {
-                            sqlite_return_code = sqlite3_errcode(volume->db);
-                            break;
-                        }
-                    }
-                }
-
-                if (del_stmt)
-                    sqlite3_finalize(del_stmt);
-                if (ins_stmt)
-                    sqlite3_finalize(ins_stmt);
-                if (null_stmt)
-                    sqlite3_finalize(null_stmt);
-
-                /* Free id_blobs */
-                for (size_t j = 0; j < batch_count; j++)
-                    free(batch[j].id_blob);
-
-                if (sqlite_return_code == SQLITE_OK)
-                    sqlite_return_code = db_exec(volume->db, "COMMIT");
-                else
-                    db_exec(volume->db, "ROLLBACK");
-
+                sqlite_return_code = commit_relocation_batch(volume->db, batch, batch_count);
                 if (sqlite_return_code != SQLITE_OK) {
                     SET_ERR(sqlite_error, sqlite_return_code);
                     SET_ERR(error, PCACHE_DEFRAGMENT_SQLITE_ERROR);

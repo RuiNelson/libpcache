@@ -33,6 +33,18 @@ static bool cancel_after_first(double progress, void *user_data) {
     return false; /* always cancel */
 }
 
+typedef struct cancel_after {
+    int calls_allowed;
+    int invocations;
+} cancel_after;
+
+static bool cancel_after_n(double progress, void *user_data) {
+    cancel_after *state = (cancel_after *)user_data;
+    (void)progress;
+    state->invocations++;
+    return state->invocations < state->calls_allowed;
+}
+
 static void put_indexed(pcache_handle handle, uint32_t index) {
     unsigned char id[ID_SIZE], page[PAGE_SIZE];
     make_id_with_index(id, ID_SIZE, index);
@@ -139,6 +151,50 @@ tstsuite("defragmentation") {
             }
         }
         tstcheck(ok, "post-cancel volume is still readable");
+
+        pcache_close(handle, NULL, NULL, NULL);
+        test_paths_cleanup(&paths);
+    }
+
+    tstcase("defragment cancelled after a chain of moves leaves every page readable") {
+        /* Deleting index 0 frees rowid 1, so every live page shifts down by one:
+         * rowid 2 -> 1, rowid 3 -> 2, ... The second move overwrites rowid 2,
+         * which was the source of the first move. Cancelling right after it
+         * must not leave the index pointing at overwritten bytes. */
+        test_paths paths;
+        test_paths_init(&paths, "defrag_cancel_chain");
+
+        pcache_configuration config = {
+            .capacity_policy = PCACHE_CAPACITY_FIXED,
+            .page_size       = PAGE_SIZE,
+            .max_pages       = MAX_PAGES,
+            .id_size         = ID_SIZE,
+        };
+        pcache_handle handle = make_volume_and_open(&paths, &config);
+
+        for (uint32_t i = 0; i < MAX_PAGES; i++)
+            put_indexed(handle, i);
+        delete_indexed(handle, 0);
+
+        cancel_after            state      = {.calls_allowed = 2, .invocations = 0};
+        pcache_defragment_error defrag_err = (pcache_defragment_error)-1;
+        pcache_defragment(handle, cancel_after_n, &state, false, true, &defrag_err, NULL, NULL);
+        tstcheck(defrag_err == PCACHE_DEFRAGMENT_CANCELLED, "defragment cancelled");
+        tstcheck(state.invocations == 2, "cancelled on the second progress report");
+
+        bool ok = true;
+        for (uint32_t i = 1; i < MAX_PAGES; i++) {
+            unsigned char id[ID_SIZE], page_out[PAGE_SIZE], expected[PAGE_SIZE];
+            make_id_with_index(id, ID_SIZE, i);
+            make_page_with_index(expected, PAGE_SIZE, i);
+            pcache_get_error get_error = (pcache_get_error)-1;
+            pcache_get_page(handle, id, page_out, &get_error, NULL, NULL);
+            if (get_error != PCACHE_GET_OK || memcmp(page_out, expected, PAGE_SIZE) != 0) {
+                ok = false;
+                break;
+            }
+        }
+        tstcheck(ok, "every surviving id returns its own content after cancel");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);

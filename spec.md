@@ -609,21 +609,19 @@ void pcache_delete_pages_range(
 
 ### Maintenance
 
-**`pcache_defragment`.** Relocates live pages contiguously toward the beginning of the data file, eliminating the gaps left by recycled rows. It accepts a progress *callback* that allows the caller to monitor and, if desired, cancel the operation. When the `shrink_file` argument is true, the data file is truncated to its minimum size after the relocation. If the callback cancels the operation, the volume remains in a consistent state: pages processed up to the cancellation point have been relocated and the index updated accordingly; unprocessed pages remain in their original positions.
+**`pcache_defragment`.** Relocates live pages contiguously toward the beginning of the data file, eliminating the gaps left by recycled rows. It accepts a progress *callback* that allows the caller to monitor and, if desired, cancel the operation. When the `shrink_file` argument is true, the data file is truncated to its minimum size after the relocation. If the callback cancels the operation, the volume remains in a consistent state: every page is readable at the slot the index records for it. Moves whose index update has been committed stay relocated; moves still waiting in an uncommitted batch (see below) are discarded and those pages remain at their original positions, as do all unprocessed pages.
 
 On `FIFO` volumes the operation is a no-op: the FIFO eviction order is encoded in the relative position of live and empty slots, so any rearrangement would corrupt that order. The callback is invoked once with `progress = 1.0` and the function returns success without touching the volume.
 
-The relocation is **crash-safe**: for each page that needs to be moved, the operation proceeds as follows:
+The relocation is **crash-safe**. Live pages are processed in ascending `ROWID` order; each page that is not already at its compact position is moved as follows:
 
-1. The page data is copied to the destination slot (the source remains intact).
-2. Within a single SQLite transaction:
-   - The `id_hash` and `id` are read from the source row.
-   - Any NULL row at the destination is deleted.
-   - A new row is inserted at the destination with the same `id_hash` and `id`.
-   - The source row is nulled out.
-3. The transaction is committed.
+1. The `id_hash` and `id` are read from the source row.
+2. The page data is copied to the destination slot (the source remains intact).
+3. The move is added to a pending batch.
 
-This sequence ensures that at any point during the operation, the index points to valid data. Duplicates of `id_hash`/`id` are permitted and occur transiently during the transaction window; after commit, the destination holds the only live copy. A crash at any point leaves the volume in a recoverable state: either the source remains valid (transaction did not complete) or the destination is valid (transaction completed).
+A pending batch is committed in a single SQLite transaction that, for each move in it, deletes any NULL row at the destination, inserts a row at the destination with the same `id_hash` and `id`, and nulls out the source row. The batch is committed when it reaches 100 moves, after the last live page, and — **before step 2** — whenever the next destination slot is the source of a move still in the pending batch. That last rule guarantees that page data is only ever written to a slot that the committed index does not reference, so an uncommitted batch can always be discarded safely.
+
+This sequence ensures that at any point during the operation, the index points to valid data. Duplicates of `id_hash`/`id` are permitted and occur transiently during the transaction window; after commit, the destination holds the only live copy. A crash, I/O error or cancellation at any point leaves the volume in a recoverable state: for every move, either the source remains valid (its batch was not committed) or the destination is valid (its batch was committed).
 
 ```c
 void pcache_defragment(
