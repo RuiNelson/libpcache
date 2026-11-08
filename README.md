@@ -1,5 +1,12 @@
 # libpcache
 
+[![Build](https://img.shields.io/github/actions/workflow/status/RuiNelson/libpcache/cmake-single-platform.yml?branch=main&logo=github)](https://github.com/RuiNelson/libpcache/actions/workflows/cmake-single-platform.yml)
+[![Release](https://img.shields.io/github/v/release/RuiNelson/libpcache)](https://github.com/RuiNelson/libpcache/releases)
+[![License: MIT](https://img.shields.io/github/license/RuiNelson/libpcache)](LICENSE)
+![Language](https://img.shields.io/badge/language-C17-blue?logo=c)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
+![SQLite](https://img.shields.io/badge/index-SQLite-003B57?logo=sqlite)
+
 Fast, reliable, persistent storage for fixed-size pages — identified by any binary key you choose.
 
 ![Animation: a page's key goes into the SQLite index and its bytes into a fixed-size slot of the data file; reads look the key up in the index; a FIFO volume keeps one slot free and each write evicts the oldest page](doc/libpcache-animation.svg)
@@ -216,4 +223,4 @@ The HTML output is written to `docs/html/`. Open `docs/html/index.html` in a bro
 
 ## Copyright and Licensing
 
-Copyright © 2026 Rui Nelson. All rights reserved.
+Copyright © 2026 Rui Nelson. Released under the [MIT License](LICENSE).
