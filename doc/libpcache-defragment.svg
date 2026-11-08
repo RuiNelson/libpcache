@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="450" viewBox="0 0 850 450" role="img" aria-label="libpcache defragmentation animation. A FIXED volume holds 5 pages spread over 9 slots. pcache_defragment copies each page into the lowest free slot, then repoints its index row; the progress callback cancels after two moves, leaving the volume consistent; a second call finishes the job and the data file is truncated from 9 to 5 slots.">
+<title>libpcache: defragmentation</title>
+<defs>
+<pattern id="fgmin" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M16 0H0V16" fill="none" stroke="rgba(31,79,168,.13)" stroke-width="1"></path></pattern>
+<pattern id="fgmaj" width="80" height="80" patternUnits="userSpaceOnUse"><rect width="80" height="80" fill="url(#fgmin)"></rect><path d="M80 0H0V80" fill="none" stroke="rgba(31,79,168,.28)" stroke-width="1"></path></pattern>
+<pattern id="fhatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#3a372e" stroke-width="1"></line></pattern>
+<pattern id="fhatchl" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#f4efe0" stroke-opacity=".45" stroke-width="1"></line></pattern>
+<style>
+.disp{font-family:"Big Shoulders Display","Arial Narrow",sans-serif;font-weight:800;letter-spacing:.02em}
+.lbl,.cell,.note,.cap{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,"Courier New",monospace}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.14em}
+.cell{font-size:12px;font-weight:500}
+.note{font-size:12px;font-style:italic}
+.cap{font-size:13px;font-weight:500}
+.f{animation:20s cubic-bezier(.2,0,0,1) infinite}
+@keyframes fw1{0%,12.4%{opacity:1}12.5%,100%{opacity:0}}
+@keyframes fw2{0%,12.4%{opacity:0}12.5%,29.9%{opacity:1}30%,100%{opacity:0}}
+@keyframes fw3{0%,29.9%{opacity:0}30%,42.4%{opacity:1}42.5%,100%{opacity:0}}
+@keyframes fw4{0%,42.4%{opacity:0}42.5%,62.4%{opacity:1}62.5%,100%{opacity:0}}
+@keyframes fw5{0%,62.4%{opacity:0}62.5%,77.4%{opacity:1}77.5%,100%{opacity:0}}
+@keyframes fw6{0%,77.4%{opacity:0}77.5%,100%{opacity:1}}
+@keyframes fm3{0%,15%{opacity:0;transform:translate(0,0)}15.5%{opacity:1;transform:translate(0,0)}17.5%{transform:translate(-34px,-40px)}20%,100%{opacity:1;transform:translate(-68px,0)}}
+@keyframes fm4{0%,22.5%{opacity:0;transform:translate(0,0)}23%{opacity:1;transform:translate(0,0)}25%{transform:translate(-34px,-40px)}27.5%,100%{opacity:1;transform:translate(-68px,0)}}
+@keyframes fm6{0%,47.5%{opacity:0;transform:translate(0,0)}48%{opacity:1;transform:translate(0,0)}50%{transform:translate(-68px,-44px)}52.5%,100%{opacity:1;transform:translate(-136px,0)}}
+@keyframes fm9{0%,55%{opacity:0;transform:translate(0,0)}55.5%{opacity:1;transform:translate(0,0)}58.25%{transform:translate(-136px,-50px)}61%,100%{opacity:1;transform:translate(-272px,0)}}
+@keyframes fs3{0%,20%{opacity:1}21.5%,100%{opacity:0}}
+@keyframes fs4{0%,27.5%{opacity:1}29%,100%{opacity:0}}
+@keyframes fs6{0%,52.5%{opacity:1}54%,100%{opacity:0}}
+@keyframes fs9{0%,61%{opacity:1}62.5%,100%{opacity:0}}
+@keyframes fbar{0%,15%{transform:scaleX(0)}20%{transform:scaleX(.2)}27.5%,42.4%{transform:scaleX(.4)}42.5%{transform:scaleX(0)}45%{transform:scaleX(.6)}52.5%{transform:scaleX(.8)}61%,100%{transform:scaleX(1)}}
+@keyframes fbarc{0%,29.9%{fill:#1f4fa8}30%,42.4%{fill:#c8321f}42.5%,100%{fill:#1f4fa8}}
+@keyframes ft0{0%,19.9%{opacity:1}20%,42.4%{opacity:0}42.5%,44.9%{opacity:1}45%,100%{opacity:0}}
+@keyframes ft20{0%,19.9%{opacity:0}20%,27.4%{opacity:1}27.5%,100%{opacity:0}}
+@keyframes ft40{0%,27.4%{opacity:0}27.5%,29.9%{opacity:1}30%,100%{opacity:0}}
+@keyframes ftst{0%,29.9%{opacity:0}30%,42.4%{opacity:1}42.5%,100%{opacity:0}}
+@keyframes ft60{0%,44.9%{opacity:0}45%,52.4%{opacity:1}52.5%,100%{opacity:0}}
+@keyframes ft80{0%,52.4%{opacity:0}52.5%,60.9%{opacity:1}61%,100%{opacity:0}}
+@keyframes ft100{0%,60.9%{opacity:0}61%,100%{opacity:1}}
+@keyframes fr1{0%,42.4%{opacity:1}42.5%,100%{opacity:0}}
+@keyframes fr2{0%,42.4%{opacity:0}42.5%,100%{opacity:1}}
+@keyframes ftrim{0%,64%{opacity:1}68%,100%{opacity:0}}
+@keyframes fline{0%,64%{transform:scaleX(1)}68%,100%{transform:scaleX(.5467)}}
+@keyframes ftick{0%,64%{transform:translate(0,0)}68%,100%{transform:translate(-272px,0)}}
+@keyframes fz1{0%,65.9%{opacity:1}66%,100%{opacity:0}}
+@keyframes fz2{0%,65.9%{opacity:0}66%,100%{opacity:1}}
+#fcap1,#fn1{animation-name:fw1}#fcap2,#fn2{animation-name:fw2}#fcap3,#fn3{animation-name:fw3}
+#fcap4,#fn4{animation-name:fw4}#fcap5,#fn5{animation-name:fw5}#fcap6,#fn6{animation-name:fw6}
+#fm3{animation-name:fm3}#fm4{animation-name:fm4}#fm6{animation-name:fm6}#fm9{animation-name:fm9}
+#fs3{animation-name:fs3}#fs4{animation-name:fs4}#fs6{animation-name:fs6}#fs9{animation-name:fs9}
+#fbar{animation-name:fbar,fbarc;transform-box:fill-box;transform-origin:0 50%}
+#ft0{animation-name:ft0}#ft20{animation-name:ft20}#ft40{animation-name:ft40}#ftst{animation-name:ftst}
+#ft60{animation-name:ft60}#ft80{animation-name:ft80}#ft100{animation-name:ft100}
+#fr1{animation-name:fr1}#fr2{animation-name:fr2}#ftrim{animation-name:ftrim}
+#fline{animation-name:fline;transform-box:fill-box;transform-origin:0 50%}#ftick{animation-name:ftick}
+#fz1{animation-name:fz1}#fz2{animation-name:fz2}
+@media (prefers-reduced-motion:reduce){.f{animation:none}}
+</style>
+</defs>
+
+<!-- ground -->
+<rect width="850" height="450" fill="#f4efe0"></rect>
+<rect width="850" height="450" fill="url(#fgmaj)"></rect>
+
+<!-- header -->
+<text class="disp" x="32" y="62" font-size="44" fill="#14130f">LIBPCACHE</text>
+<text class="lbl" x="818" y="46" text-anchor="end" fill="#3a372e">DEFRAGMENTATION</text>
+<text class="lbl" x="818" y="63" text-anchor="end" fill="#6b6657">SHEET 03 / REV A</text>
+<line x1="24" y1="76" x2="826" y2="76" stroke="#14130f" stroke-width="1.5"></line>
+
+<!-- volume panel -->
+<rect x="35" y="103" width="786" height="272" fill="#14130f"></rect>
+<rect x="32" y="100" width="786" height="272" fill="#f4efe0" stroke="#14130f" stroke-width="1.5"></rect>
+<rect x="32" y="100" width="786" height="22" fill="#14130f"></rect>
+<text class="lbl" x="42" y="115" fill="#f4efe0">VOLUME · POLICY FIXED · PAGE_SIZE 32K</text>
+<text class="lbl" x="808" y="115" text-anchor="end" fill="#f4efe0">5 LIVE PAGES</text>
+
+<!-- row labels -->
+<text class="lbl" x="48" y="166" fill="#6b6657">ROWID</text>
+<text class="lbl" x="48" y="212" fill="#6b6657">PAGE</text>
+<text class="lbl" x="48" y="267" fill="#6b6657">ID</text>
+<text class="lbl" x="48" y="296" fill="#6b6657">FILE</text>
+<text class="lbl" x="48" y="329" fill="#6b6657">PROGRESS</text>
+
+<!-- slots 1-5 -->
+<g class="cell" fill="#3a372e" text-anchor="middle">
+<text x="148" y="166">1</text><text x="216" y="166">2</text><text x="284" y="166">3</text><text x="352" y="166">4</text><text x="420" y="166">5</text>
+</g>
+<g fill="none" stroke="#a39d88" stroke-width="1" stroke-dasharray="3 3">
+<rect x="120" y="176" width="56" height="64"></rect><rect x="188" y="176" width="56" height="64"></rect>
+<rect x="256" y="176" width="56" height="64"></rect><rect x="324" y="176" width="56" height="64"></rect>
+<rect x="392" y="176" width="56" height="64"></rect>
+<rect x="120" y="252" width="56" height="22"></rect><rect x="188" y="252" width="56" height="22"></rect>
+<rect x="256" y="252" width="56" height="22"></rect><rect x="324" y="252" width="56" height="22"></rect>
+<rect x="392" y="252" width="56" height="22"></rect>
+</g>
+<!-- slots 6-9 (trimmed at the end) -->
+<g id="ftrim" class="f">
+<g class="cell" fill="#3a372e" text-anchor="middle">
+<text x="488" y="166">6</text><text x="556" y="166">7</text><text x="624" y="166">8</text><text x="692" y="166">9</text>
+</g>
+<g fill="none" stroke="#a39d88" stroke-width="1" stroke-dasharray="3 3">
+<rect x="460" y="176" width="56" height="64"></rect><rect x="528" y="176" width="56" height="64"></rect>
+<rect x="596" y="176" width="56" height="64"></rect><rect x="664" y="176" width="56" height="64"></rect>
+<rect x="460" y="252" width="56" height="22"></rect><rect x="528" y="252" width="56" height="22"></rect>
+<rect x="596" y="252" width="56" height="22"></rect><rect x="664" y="252" width="56" height="22"></rect>
+</g>
+</g>
+
+<!-- live pages at their original slots -->
+<g><rect x="120" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="120" y="176" width="56" height="64" fill="url(#fhatch)"></rect><rect x="120" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="148" y="267" text-anchor="middle" fill="#14130f">11 …</text></g>
+<g id="fs3" class="f"><rect x="256" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="256" y="176" width="56" height="64" fill="url(#fhatch)"></rect><rect x="256" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="284" y="267" text-anchor="middle" fill="#14130f">33 …</text></g>
+<g id="fs4" class="f"><rect x="324" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="324" y="176" width="56" height="64" fill="url(#fhatch)"></rect><rect x="324" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="352" y="267" text-anchor="middle" fill="#14130f">44 …</text></g>
+<g id="fs6" class="f"><rect x="460" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="460" y="176" width="56" height="64" fill="url(#fhatch)"></rect><rect x="460" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="488" y="267" text-anchor="middle" fill="#14130f">66 …</text></g>
+<g id="fs9" class="f"><rect x="664" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="664" y="176" width="56" height="64" fill="url(#fhatch)"></rect><rect x="664" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="692" y="267" text-anchor="middle" fill="#14130f">99 …</text></g>
+
+<!-- relocated copies -->
+<g id="fm3" class="f" opacity="0"><rect x="256" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="256" y="176" width="56" height="64" fill="url(#fhatchl)"></rect><rect x="256" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="284" y="267" text-anchor="middle" fill="#1f4fa8">33 …</text></g>
+<g id="fm4" class="f" opacity="0"><rect x="324" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="324" y="176" width="56" height="64" fill="url(#fhatchl)"></rect><rect x="324" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="352" y="267" text-anchor="middle" fill="#1f4fa8">44 …</text></g>
+<g id="fm6" class="f" opacity="0"><rect x="460" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="460" y="176" width="56" height="64" fill="url(#fhatchl)"></rect><rect x="460" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="488" y="267" text-anchor="middle" fill="#1f4fa8">66 …</text></g>
+<g id="fm9" class="f" opacity="0"><rect x="664" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="664" y="176" width="56" height="64" fill="url(#fhatchl)"></rect><rect x="664" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="692" y="267" text-anchor="middle" fill="#1f4fa8">99 …</text></g>
+
+<!-- data file length -->
+<rect id="fline" class="f" x="120" y="291" width="600" height="3" fill="#14130f"></rect>
+<rect x="118" y="285" width="2" height="15" fill="#14130f"></rect>
+<rect id="ftick" class="f" x="718" y="285" width="2" height="15" fill="#14130f"></rect>
+<text id="fz1" class="cell f" x="730" y="297" fill="#14130f">288 KB</text>
+<text id="fz2" class="cell f" x="458" y="297" fill="#14130f" opacity="0">160 KB</text>
+
+<!-- progress -->
+<rect x="120" y="318" width="400" height="14" fill="#ebe5d0" stroke="#14130f" stroke-width="1.5"></rect>
+<rect id="fbar" class="f" x="120" y="318" width="400" height="14" fill="#1f4fa8"></rect>
+<rect x="120" y="318" width="400" height="14" fill="none" stroke="#14130f" stroke-width="1.5"></rect>
+<g class="lbl" fill="#14130f">
+<text id="ft0" class="f" x="532" y="329">0%</text>
+<text id="ft20" class="f" x="532" y="329" opacity="0">20%</text>
+<text id="ft40" class="f" x="532" y="329" opacity="0">40%</text>
+<text id="ftst" class="f" x="532" y="329" fill="#c8321f" opacity="0">CALLBACK → FALSE · STOPPED</text>
+<text id="ft60" class="f" x="532" y="329" opacity="0">60%</text>
+<text id="ft80" class="f" x="532" y="329" opacity="0">80%</text>
+<text id="ft100" class="f" x="532" y="329" opacity="0">100%</text>
+</g>
+<text id="fr1" class="lbl f" x="806" y="329" text-anchor="end" fill="#6b6657">CALL 1</text>
+<text id="fr2" class="lbl f" x="806" y="329" text-anchor="end" fill="#6b6657" opacity="0">CALL 2</text>
+
+<!-- notes -->
+<g class="note" fill="#3a372e">
+<text id="fn1" class="f" x="48" y="358">rows 2, 5, 7 and 8 are holes: 9 slots on disk for 5 pages</text>
+<text id="fn2" class="f" x="48" y="358" opacity="0">each move copies the bytes first, then repoints the index row in one transaction</text>
+<text id="fn3" class="f" x="48" y="358" opacity="0">2 moves committed, the rest untouched: the volume is consistent at every step</text>
+<text id="fn4" class="f" x="48" y="358" opacity="0">pages already in place are skipped; 66 → slot 4, 99 → slot 5</text>
+<text id="fn5" class="f" x="48" y="358" opacity="0">empty rows dropped, data file truncated to 5 × 32 KB</text>
+<text id="fn6" class="f" x="48" y="358" opacity="0">5 pages in 5 slots, no gaps · on FIFO volumes defragment is a no-op</text>
+</g>
+
+<!-- caption bar -->
+<line x1="24" y1="394" x2="826" y2="394" stroke="#14130f" stroke-width="1.5"></line>
+<g id="fcap1" class="f"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">01 / GAPS</text><text class="cap" x="172" y="425" fill="#14130f">deletes left holes in the data file</text></g>
+<g id="fcap2" class="f" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">02 / PACK</text><text class="cap" x="172" y="425" fill="#14130f">pcache_defragment(h, on_progress, ctx, true, …)  pages slide to the front</text></g>
+<g id="fcap3" class="f" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">03 / STOP</text><text class="cap" x="172" y="425" fill="#14130f">on_progress returns false → the call stops early</text></g>
+<g id="fcap4" class="f" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">04 / RESUME</text><text class="cap" x="172" y="425" fill="#14130f">call it again later: it continues from the current layout</text></g>
+<g id="fcap5" class="f" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">05 / TRIM</text><text class="cap" x="172" y="425" fill="#14130f">shrink_file = true  the data file drops from 288 KB to 160 KB</text></g>
+<g id="fcap6" class="f" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">06 / PACKED</text><text class="cap" x="172" y="425" fill="#14130f">every live page contiguous from offset 0</text></g>
+</svg>

@@ -34,6 +34,8 @@ Resize a volume at any time with `pcache_set_max_pages`. Growing is always insta
 
 Over time, deletes leave gaps in the data file. One call to `pcache_defragment` packs all live pages to the front and optionally trims the file down to its minimum size. The task can be stopped at any time via a callback.
 
+![Animation: five pages spread over nine slots slide to the front one copy at a time; the progress callback stops the first call after two moves with the volume consistent; a second call finishes and the data file is truncated from nine slots to five](doc/libpcache-defragment.svg)
+
 ## Starter Cookbook
 
 ```c
