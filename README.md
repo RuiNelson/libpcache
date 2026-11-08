@@ -2,6 +2,8 @@
 
 Fast, reliable, persistent storage for fixed-size pages — identified by any binary key you choose.
 
+![Animation: a page's key goes into the SQLite index and its bytes into a fixed-size slot of the data file; reads look the key up in the index; a full FIFO volume evicts its oldest page](doc/libpcache-animation.svg)
+
 A **volume** is two files working as one: a data file that holds the raw page bytes, and a SQLite index that maps every key to its exact location. Every operation is thread-safe and fully atomic.
 
 ### Wrappers
