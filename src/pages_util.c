@@ -2,11 +2,9 @@
 #include "db.h"
 #include "libpcache.h"
 
-#include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 static int compare_blobs_at(const void *blobs, size_t blob_size, size_t idx_a, size_t idx_b) {
     return memcmp((const uint8_t *)blobs + idx_a * blob_size, (const uint8_t *)blobs + idx_b * blob_size, blob_size);
@@ -50,18 +48,18 @@ void pcache_test_fail_put_pwrite_after(size_t successful_writes) {
 #endif
 
 bool wipe_page_at_rowid(pcache_volume *volume, int64_t rowid) {
-    off_t byte_offset = rowid_to_offset(rowid, volume->config.page_size);
+    platform_off_t byte_offset = rowid_to_offset(rowid, volume->config.page_size);
     if (!volume->wipe_buffer) {
         volume->wipe_buffer = calloc(1, volume->config.page_size);
     }
     if (!volume->wipe_buffer) {
         return false;
     }
-    ssize_t written = pwrite(volume->fd, volume->wipe_buffer, volume->config.page_size, byte_offset);
-    if (written != (ssize_t)volume->config.page_size) {
-        /* A short write does not set errno; callers report errno, so set EIO. */
+    platform_ssize_t written = platform_pwrite(volume->fd, volume->wipe_buffer, volume->config.page_size, byte_offset);
+    if (written != (platform_ssize_t)volume->config.page_size) {
+        /* A short write does not set errno; callers report the platform error, so set PLATFORM_ERROR_IO. */
         if (written >= 0)
-            errno = EIO;
+            platform_set_last_error(PLATFORM_ERROR_IO);
         return false;
     }
     return true;
@@ -75,31 +73,32 @@ void free_page_restores(page_restore *restores, size_t count) {
     free(restores);
 }
 
-bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *posix_error) {
+bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *os_error) {
     for (size_t idx = 0; idx < count; idx++) {
         if (!restores[idx].needs_restore)
             continue;
-        off_t   byte_offset = rowid_to_offset(restores[idx].rowid, volume->config.page_size);
-        ssize_t written     = pwrite(volume->fd, restores[idx].page_data, volume->config.page_size, byte_offset);
-        if (written != (ssize_t)volume->config.page_size) {
-            if (posix_error && *posix_error == 0)
-                *posix_error = written < 0 ? errno : EIO;
+        platform_off_t   byte_offset = rowid_to_offset(restores[idx].rowid, volume->config.page_size);
+        platform_ssize_t written =
+            platform_pwrite(volume->fd, restores[idx].page_data, volume->config.page_size, byte_offset);
+        if (written != (platform_ssize_t)volume->config.page_size) {
+            if (os_error && *os_error == 0)
+                *os_error = written < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
             return false;
         }
     }
     return true;
 }
 
-ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, off_t byte_offset) {
+platform_ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, platform_off_t byte_offset) {
 #ifdef PCACHE_TESTING
     if (s_test_put_pwrite_fail_after == 1) {
-        errno = EIO;
+        platform_set_last_error(PLATFORM_ERROR_IO);
         return -1;
     }
     if (s_test_put_pwrite_fail_after > 1)
         s_test_put_pwrite_fail_after--;
 #endif
-    return pwrite(volume->fd, page, page_size, byte_offset);
+    return platform_pwrite(volume->fd, page, page_size, byte_offset);
 }
 
 int64_t find_fifo_cursor(pcache_volume *volume, int *sqlite_return_code) {
@@ -164,7 +163,7 @@ int64_t fifo_locate_run_end(pcache_volume *volume, int *sqlite_return_code) {
 }
 
 fifo_compact_result
-fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *posix_return_code) {
+fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *os_return_code) {
     const int64_t max_pages = (int64_t)volume->config.max_pages;
     const size_t  page_size = volume->config.page_size;
     const size_t  id_size   = volume->config.id_size;
@@ -262,12 +261,12 @@ fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_co
             sqlite3_reset(select_statement);
 
             /* Copy the page bytes to the destination slot. */
-            ssize_t io = pread(volume->fd, page_buf, page_size, rowid_to_offset(src, page_size));
-            if (io == (ssize_t)page_size)
-                io = pwrite(volume->fd, page_buf, page_size, rowid_to_offset(dst, page_size));
-            if (io != (ssize_t)page_size) {
-                *posix_return_code = io < 0 ? errno : EIO;
-                result             = FIFO_COMPACT_IO_ERROR;
+            platform_ssize_t io = platform_pread(volume->fd, page_buf, page_size, rowid_to_offset(src, page_size));
+            if (io == (platform_ssize_t)page_size)
+                io = platform_pwrite(volume->fd, page_buf, page_size, rowid_to_offset(dst, page_size));
+            if (io != (platform_ssize_t)page_size) {
+                *os_return_code = io < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
+                result          = FIFO_COMPACT_IO_ERROR;
                 break;
             }
 

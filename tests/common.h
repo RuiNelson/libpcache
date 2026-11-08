@@ -3,7 +3,7 @@
 #include "libpcache.h"
 
 #include <stddef.h>
-#include <sys/types.h>
+#include <stdint.h>
 
 /* Helper that owns a pair of unique temporary paths for a test volume. */
 typedef struct test_paths {
@@ -13,7 +13,7 @@ typedef struct test_paths {
 } test_paths;
 
 /**
- * Initialise a test_paths with two unique paths under /tmp, derived from
+ * Initialise a test_paths with two unique paths in the temporary directory, derived from
  * the calling process PID and an internal sequence counter, and unlink any
  * pre-existing files at those paths.
  *
@@ -37,4 +37,13 @@ void make_id_with_index(void *id_buffer, size_t id_size, uint32_t index);
 void make_page_with_index(void *page_buffer, size_t page_size, uint32_t index);
 
 /** Return the size in bytes of the file at @p path, or -1 on error. */
-off_t file_size(const char *path);
+int64_t file_size(const char *path);
+
+/** Truncate or extend the file at @p path to @p size bytes. Returns 0 on success. */
+int test_truncate(const char *path, int64_t size);
+
+/** Write "<temporary directory>/<name>" into @p out (/tmp on POSIX, GetTempPath on Windows). */
+void test_temp_path(char *out, size_t capacity, const char *name);
+
+/** Monotonic clock reading in seconds. */
+double test_monotonic_seconds(void);

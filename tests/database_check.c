@@ -2,14 +2,13 @@
 
 #include "common.h"
 #include "libpcache.h"
+#include "platform.h"
 #include "tst.h"
 
-#include <fcntl.h>
 #include <sqlite3.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #define ID_SIZE   16
 #define PAGE_SIZE 256
@@ -232,17 +231,17 @@ tstsuite("database structure (direct SQLite inspection)") {
         sqlite3_stmt *stmt = NULL;
         sqlite3_prepare_v2(db, "SELECT rowid, id FROM pages WHERE id IS NOT NULL ORDER BY rowid", -1, &stmt, NULL);
 
-        int data_fd = open(paths.data_path, O_RDONLY);
+        int data_fd = platform_open_rw(paths.data_path, false);
         tstcheck(data_fd >= 0, "data file opened");
 
         bool offsets_match = true;
         while (sqlite3_step(stmt) == SQLITE_ROW) {
-            sqlite3_int64 rowid   = sqlite3_column_int64(stmt, 0);
-            const void   *id_blob = sqlite3_column_blob(stmt, 1);
-            int           id_blen = sqlite3_column_bytes(stmt, 1);
-            off_t         offset  = (off_t)(rowid - 1) * PAGE_SIZE;
-            unsigned char data_buf[PAGE_SIZE];
-            ssize_t       read_size = pread(data_fd, data_buf, PAGE_SIZE, offset);
+            sqlite3_int64    rowid   = sqlite3_column_int64(stmt, 0);
+            const void      *id_blob = sqlite3_column_blob(stmt, 1);
+            int              id_blen = sqlite3_column_bytes(stmt, 1);
+            int64_t          offset  = (int64_t)(rowid - 1) * PAGE_SIZE;
+            unsigned char    data_buf[PAGE_SIZE];
+            platform_ssize_t read_size = platform_pread(data_fd, data_buf, PAGE_SIZE, offset);
             tstcheck(read_size == PAGE_SIZE, "pread returns full page");
 
             unsigned char expected_page[PAGE_SIZE];
@@ -261,7 +260,7 @@ tstsuite("database structure (direct SQLite inspection)") {
         }
         tstcheck(offsets_match, "byte_offset = (ROWID - 1) * page_size holds for every live page");
 
-        close(data_fd);
+        platform_close(data_fd);
         sqlite3_finalize(stmt);
         sqlite3_close(db);
         test_paths_cleanup(&paths);

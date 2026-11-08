@@ -1,33 +1,59 @@
 #include "common.h"
+#include "platform.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+
+#ifdef _WIN32
+#include <process.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#define test_getpid _getpid
+#else
+#include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
+#define test_getpid getpid
+#endif
 
 static int next_sequence(void) {
     static int seq = 0;
     return seq++;
 }
 
+void test_temp_path(char *out, size_t capacity, const char *name) {
+#ifdef _WIN32
+    char  directory[MAX_PATH + 1];
+    DWORD length = GetTempPathA((DWORD)sizeof(directory), directory);
+    if (length == 0 || length >= sizeof(directory))
+        snprintf(directory, sizeof(directory), ".\\");
+    snprintf(out, capacity, "%s%s", directory, name);
+#else
+    snprintf(out, capacity, "/tmp/%s", name);
+#endif
+}
+
 void test_paths_init(test_paths *paths, const char *prefix) {
-    int sequence = next_sequence();
-    snprintf(
-        paths->database_path, sizeof(paths->database_path), "/tmp/pcache_%s_%d_%d.db", prefix, (int)getpid(), sequence);
-    snprintf(paths->data_path, sizeof(paths->data_path), "/tmp/pcache_%s_%d_%d.dat", prefix, (int)getpid(), sequence);
+    int  sequence = next_sequence();
+    char name[160];
+
+    snprintf(name, sizeof(name), "pcache_%s_%d_%d.db", prefix, (int)test_getpid(), sequence);
+    test_temp_path(paths->database_path, sizeof(paths->database_path), name);
+    snprintf(name, sizeof(name), "pcache_%s_%d_%d.dat", prefix, (int)test_getpid(), sequence);
+    test_temp_path(paths->data_path, sizeof(paths->data_path), name);
 
     /* Make sure no leftover files trip pcache_create. */
-    unlink(paths->database_path);
-    unlink(paths->data_path);
+    platform_unlink(paths->database_path);
+    platform_unlink(paths->data_path);
 
     paths->pair.database_path = paths->database_path;
     paths->pair.data_path     = paths->data_path;
 }
 
 void test_paths_cleanup(test_paths *paths) {
-    unlink(paths->database_path);
-    unlink(paths->data_path);
+    platform_unlink(paths->database_path);
+    platform_unlink(paths->data_path);
 }
 
 pcache_handle make_volume_and_open(const test_paths *paths, const pcache_configuration *config) {
@@ -64,9 +90,37 @@ void make_page_with_index(void *page_buffer, size_t page_size, uint32_t index) {
     }
 }
 
-off_t file_size(const char *path) {
+int64_t file_size(const char *path) {
+#ifdef _WIN32
+    struct _stat64 st;
+    if (_stat64(path, &st) != 0)
+        return -1;
+#else
     struct stat st;
     if (stat(path, &st) != 0)
         return -1;
-    return st.st_size;
+#endif
+    return (int64_t)st.st_size;
+}
+
+int test_truncate(const char *path, int64_t size) {
+    int fd = platform_open_rw(path, false);
+    if (fd < 0)
+        return -1;
+    int result = platform_ftruncate(fd, size);
+    platform_close(fd);
+    return result;
+}
+
+double test_monotonic_seconds(void) {
+#ifdef _WIN32
+    LARGE_INTEGER frequency, counter;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&counter);
+    return (double)counter.QuadPart / (double)frequency.QuadPart;
+#else
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (double)now.tv_sec + (double)now.tv_nsec / 1e9;
+#endif
 }

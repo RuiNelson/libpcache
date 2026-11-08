@@ -1,14 +1,13 @@
 #pragma once
 
 #include "libpcache.h"
+#include "platform.h"
 
-#include <pthread.h>
 #include <sqlite3.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 
 /* ── Constants ── */
 
@@ -32,7 +31,7 @@ typedef struct {
     pcache_configuration config;              /**< Volume configuration (page size, policy, capacity, etc.). */
     size_t               row_count;           /**< Total rows in the pages table, including NULL slots. */
     uint8_t             *wipe_buffer;         /**< Cached zero buffer used to wipe deleted page slots. */
-    pthread_mutex_t      mutex;               /**< Per-volume mutex for thread safety. */
+    platform_mutex       mutex;               /**< Per-volume mutex for thread safety. */
 } pcache_volume;
 
 #ifdef PCACHE_TESTING

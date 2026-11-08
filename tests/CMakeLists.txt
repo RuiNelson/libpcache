@@ -10,6 +10,9 @@ FetchContent_MakeAvailable(tst)
 include_directories(${CMAKE_SOURCE_DIR})
 include_directories(${tst_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+# Tests use the internal portability layer (src/platform.h) for file helpers
+# and native error-code constants.
+include_directories(${CMAKE_SOURCE_DIR}/src)
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang")
     add_compile_options(
@@ -23,6 +26,7 @@ endif()
 
 add_library(pcache_test_common STATIC common.c)
 target_include_directories(pcache_test_common PUBLIC ${CMAKE_SOURCE_DIR}/include)
+target_link_libraries(pcache_test_common PUBLIC pcache)
 
 set(PCACHE_TESTS
     happy_path_single

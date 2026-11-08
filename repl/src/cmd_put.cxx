@@ -23,7 +23,7 @@ bool cmd_put(repl_context *ctx, const command &cmd) {
     }
 
     pcache_put_error err;
-    int              sqlite_err = 0, posix_err = 0;
+    int              sqlite_err = 0, os_err = 0;
     pcache_put_page(ctx->handle,
                     id_buf.data(),
                     page_buf.data(),
@@ -31,10 +31,10 @@ bool cmd_put(repl_context *ctx, const command &cmd) {
                     has_flag(cmd, "--durable"),
                     &err,
                     &sqlite_err,
-                    &posix_err);
+                    &os_err);
 
     if (err != PCACHE_PUT_OK) {
-        print_error(static_cast<int>(err), sqlite_err, posix_err);
+        print_error(static_cast<int>(err), sqlite_err, os_err);
         return false;
     }
 

@@ -198,10 +198,10 @@ tstsuite("elasticity - grow and shrink") {
 
         const uint32_t       initial_max = 16;
         pcache_configuration config      = {
-            .capacity_policy = PCACHE_CAPACITY_FIFO,
-            .page_size       = PAGE_SIZE,
-            .max_pages       = initial_max,
-            .id_size         = ID_SIZE,
+                 .capacity_policy = PCACHE_CAPACITY_FIFO,
+                 .page_size       = PAGE_SIZE,
+                 .max_pages       = initial_max,
+                 .id_size         = ID_SIZE,
         };
         pcache_handle handle = make_volume_and_open(&paths, &config);
 
@@ -214,7 +214,7 @@ tstsuite("elasticity - grow and shrink") {
         tstcheck(shrink_error == PCACHE_SET_MAX_PAGES_OK, "FIFO shrink OK");
 
         /* The data file must shrink accordingly. */
-        off_t expected_size = (off_t)8 * PAGE_SIZE;
+        int64_t expected_size = (int64_t)8 * PAGE_SIZE;
         tstcheck(file_size(paths.data_path) == expected_size, "FIFO data file truncated to new size");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;
@@ -245,15 +245,16 @@ tstsuite("elasticity - grow and shrink") {
         pcache_handle     handle     = pcache_open(&paths.pair, &open_error, NULL, NULL);
         tstcheck(open_error == PCACHE_OPEN_OK, "open OK");
 
-        off_t initial_size = file_size(paths.data_path);
+        int64_t initial_size = file_size(paths.data_path);
         tstcheck(initial_size >= 0, "data file exists");
 
         pcache_preallocate_error prealloc_error = (pcache_preallocate_error)-1;
         pcache_preallocate(handle, true, true, true, &prealloc_error, NULL, NULL);
         tstcheck(prealloc_error == PCACHE_PREALLOCATE_OK, "preallocate OK");
 
-        off_t after_prealloc = file_size(paths.data_path);
-        tstcheck(after_prealloc >= (off_t)4 * PAGE_SIZE, "data file at least max_pages * page_size after preallocate");
+        int64_t after_prealloc = file_size(paths.data_path);
+        tstcheck(after_prealloc >= (int64_t)4 * PAGE_SIZE,
+                 "data file at least max_pages * page_size after preallocate");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);

@@ -157,7 +157,7 @@ Identifiers and page data are always read from files — there is no inline buff
 
 ## Error handling
 
-Errors are reported in English. SQLite errors display the message from `sqlite3_errmsg()`. POSIX errors display the numeric error code.
+Errors are reported in English. SQLite errors display the message from `sqlite3_errmsg()`. OS errors display the numeric error code.
 
 ## Interactive mode
 

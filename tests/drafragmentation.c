@@ -93,7 +93,7 @@ tstsuite("defragmentation") {
         tstcheck(ok, "all surviving ids readable with original content");
 
         /* shrink_file=true means data file is truncated to live pages * page_size. */
-        off_t expected_size = (off_t)nsurv * PAGE_SIZE;
+        int64_t expected_size = (int64_t)nsurv * PAGE_SIZE;
         tstcheck(file_size(paths.data_path) == expected_size, "data file truncated to live pages");
 
         pcache_inspect_page_count_error count_error = (pcache_inspect_page_count_error)-1;

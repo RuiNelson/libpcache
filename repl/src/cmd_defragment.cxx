@@ -7,7 +7,7 @@
 
 bool cmd_defragment(repl_context *ctx, const command &cmd) {
     pcache_defragment_error def_err;
-    int                     sqlite_err = 0, posix_err = 0;
+    int                     sqlite_err = 0, os_err = 0;
     pcache_defragment(ctx->handle,
                       nullptr,
                       nullptr,
@@ -15,10 +15,10 @@ bool cmd_defragment(repl_context *ctx, const command &cmd) {
                       has_flag(cmd, "--durable"),
                       &def_err,
                       &sqlite_err,
-                      &posix_err);
+                      &os_err);
 
     if (def_err != PCACHE_DEFRAGMENT_OK) {
-        print_error(static_cast<int>(def_err), sqlite_err, posix_err);
+        print_error(static_cast<int>(def_err), sqlite_err, os_err);
         return false;
     }
 

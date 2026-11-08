@@ -2,10 +2,7 @@
 #include "handle.h"
 #include "macros.h"
 
-#include <errno.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 /* Batch relocations to reduce fsync overhead.
  * Each batch processes up to DEFAGMENT_BATCH_SIZE pages in one transaction. */
@@ -26,8 +23,8 @@ void pcache_defragment(pcache_handle            handle,
                        bool                     durable,
                        pcache_defragment_error *error,
                        int                     *sqlite_error,
-                       int                     *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                       int                     *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     pcache_volume *volume = volume_from_handle(handle);
     if (!volume) {
@@ -41,7 +38,7 @@ void pcache_defragment(pcache_handle            handle,
     if (volume->config.capacity_policy == PCACHE_CAPACITY_FIFO) {
         if (progress_callback)
             progress_callback(1.0, progress_user_data);
-        pthread_mutex_unlock(&volume->mutex);
+        platform_mutex_unlock(&volume->mutex);
         return;
     }
 
@@ -186,13 +183,13 @@ void pcache_defragment(pcache_handle            handle,
                 }
                 sqlite3_finalize(stmt);
 
-                off_t src = rowid_to_offset(rowid, volume->config.page_size);
-                off_t dst = rowid_to_offset(next_compact, volume->config.page_size);
+                platform_off_t src = rowid_to_offset(rowid, volume->config.page_size);
+                platform_off_t dst = rowid_to_offset(next_compact, volume->config.page_size);
 
                 /* Step 1: Copy page data */
-                ssize_t copied = pread(volume->fd, buf, volume->config.page_size, src);
-                if (copied != (ssize_t)volume->config.page_size) {
-                    SET_ERR(posix_error, copied < 0 ? errno : EIO);
+                platform_ssize_t copied = platform_pread(volume->fd, buf, volume->config.page_size, src);
+                if (copied != (platform_ssize_t)volume->config.page_size) {
+                    SET_ERR(os_error, copied < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                     SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
                     free(relocation.id_blob);
                     for (size_t k = 0; k < batch_count; k++)
@@ -202,9 +199,9 @@ void pcache_defragment(pcache_handle            handle,
                     free(rowids);
                     goto unlock;
                 }
-                copied = pwrite(volume->fd, buf, volume->config.page_size, dst);
-                if (copied != (ssize_t)volume->config.page_size) {
-                    SET_ERR(posix_error, copied < 0 ? errno : EIO);
+                copied = platform_pwrite(volume->fd, buf, volume->config.page_size, dst);
+                if (copied != (platform_ssize_t)volume->config.page_size) {
+                    SET_ERR(os_error, copied < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                     SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
                     free(relocation.id_blob);
                     for (size_t k = 0; k < batch_count; k++)
@@ -359,21 +356,21 @@ cleanup_nulls:
     volume->row_count = live_cnt;
 
     if (shrink_file) {
-        off_t new_size = (off_t)live_cnt * volume->config.page_size;
-        if (ftruncate(volume->fd, new_size) != 0) {
-            SET_ERR(posix_error, errno);
+        platform_off_t new_size = (platform_off_t)live_cnt * volume->config.page_size;
+        if (platform_ftruncate(volume->fd, new_size) != 0) {
+            SET_ERR(os_error, platform_last_error());
             SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
             goto unlock;
         }
     }
 
     if (durable) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error))
+        if (!sync_if_durable(volume, true, os_error, sqlite_error))
             SET_ERR(error, PCACHE_DEFRAGMENT_IO_ERROR);
     }
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 #undef DEFAGMENT_BATCH_SIZE
@@ -383,8 +380,8 @@ void pcache_set_max_pages(pcache_handle               handle,
                           bool                        durable,
                           pcache_set_max_pages_error *error,
                           int                        *sqlite_error,
-                          int                        *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                          int                        *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (new_max_pages == 0) {
         SET_ERR(error, PCACHE_SET_MAX_PAGES_INVALID_ARGUMENT);
@@ -538,13 +535,13 @@ void pcache_set_max_pages(pcache_handle               handle,
 
                 bool io_ok = true;
                 for (size_t i = 0; i < src_cnt && io_ok; i++) {
-                    off_t   src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
-                    off_t   dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
-                    ssize_t copied  = pread(volume->fd, buf, volume->config.page_size, src_off);
-                    if (copied == (ssize_t)volume->config.page_size)
-                        copied = pwrite(volume->fd, buf, volume->config.page_size, dst_off);
-                    if (copied != (ssize_t)volume->config.page_size) {
-                        SET_ERR(posix_error, copied < 0 ? errno : EIO);
+                    platform_off_t   src_off = rowid_to_offset(sources[i].rowid, volume->config.page_size);
+                    platform_off_t   dst_off = rowid_to_offset(dst_slots[i], volume->config.page_size);
+                    platform_ssize_t copied  = platform_pread(volume->fd, buf, volume->config.page_size, src_off);
+                    if (copied == (platform_ssize_t)volume->config.page_size)
+                        copied = platform_pwrite(volume->fd, buf, volume->config.page_size, dst_off);
+                    if (copied != (platform_ssize_t)volume->config.page_size) {
+                        SET_ERR(os_error, copied < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                         SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
                         io_ok = false;
                     }
@@ -704,9 +701,9 @@ void pcache_set_max_pages(pcache_handle               handle,
             if (volume->row_count > new_max_pages)
                 volume->row_count = new_max_pages;
 
-            off_t new_size = (off_t)new_max_pages * volume->config.page_size;
-            if (ftruncate(volume->fd, new_size) != 0) {
-                SET_ERR(posix_error, errno);
+            platform_off_t new_size = (platform_off_t)new_max_pages * volume->config.page_size;
+            if (platform_ftruncate(volume->fd, new_size) != 0) {
+                SET_ERR(os_error, platform_last_error());
                 SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
                 goto unlock;
             }
@@ -739,13 +736,13 @@ void pcache_set_max_pages(pcache_handle               handle,
      * the persisted value. */
     volume->config.max_pages = new_max_pages;
 
-    if (!sync_if_durable(volume, durable, posix_error, sqlite_error)) {
+    if (!sync_if_durable(volume, durable, os_error, sqlite_error)) {
         SET_ERR(error, PCACHE_SET_MAX_PAGES_IO_ERROR);
         goto unlock;
     }
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_preallocate(pcache_handle             handle,
@@ -754,8 +751,8 @@ void pcache_preallocate(pcache_handle             handle,
                         bool                      durable,
                         pcache_preallocate_error *error,
                         int                      *sqlite_error,
-                        int                      *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                        int                      *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     pcache_volume *volume = volume_from_handle(handle);
     if (!volume) {
@@ -799,17 +796,17 @@ void pcache_preallocate(pcache_handle             handle,
     }
 
     if (preallocate_datafile) {
-        off_t target = (off_t)max * volume->config.page_size;
-        if (ftruncate(volume->fd, target) != 0) {
-            SET_ERR(posix_error, errno);
+        platform_off_t target = (platform_off_t)max * volume->config.page_size;
+        if (platform_ftruncate(volume->fd, target) != 0) {
+            SET_ERR(os_error, platform_last_error());
             SET_ERR(error, PCACHE_PREALLOCATE_IO_ERROR);
             goto unlock;
         }
     }
 
-    if (!sync_if_durable(volume, durable, posix_error, sqlite_error))
+    if (!sync_if_durable(volume, durable, os_error, sqlite_error))
         SET_ERR(error, PCACHE_PREALLOCATE_IO_ERROR);
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }

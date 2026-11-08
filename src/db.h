@@ -56,7 +56,7 @@ bool db_meta_update_u32(sqlite3 *db, const char *key, uint32_t val);
  * @brief Converts a ROWID to the corresponding byte offset in the data file.
  * @return Byte offset (ROWID 1 maps to offset 0).
  */
-off_t rowid_to_offset(int64_t rowid, size_t page_size);
+platform_off_t rowid_to_offset(int64_t rowid, size_t page_size);
 
 /**
  * @brief Find the ROWID of the page with the given identifier.
@@ -67,16 +67,17 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error);
 /**
  * @brief fsync the data file and checkpoint the SQLite WAL.
  * @param volume The volume to synchronize.
- * @param posix_error Pointer to store errno if fsync fails (can be NULL).
+ * @param os_error Pointer to store the platform error code (errno, or GetLastError() on Windows) if fsync fails (can
+ * be NULL).
  * @param sqlite_error Pointer to store SQLite error code if checkpoint fails (can be NULL).
  */
-void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqlite_error);
+void wait_for_synchronization(pcache_volume *volume, int *os_error, int *sqlite_error);
 
 /**
  * @brief Synchronize data to disk if durability is requested.
  * @return true if sync succeeded or was not needed, false on failure.
  */
-bool sync_if_durable(pcache_volume *volume, bool durable, int *posix_error, int *sqlite_error);
+bool sync_if_durable(pcache_volume *volume, bool durable, int *os_error, int *sqlite_error);
 
 /**
  * @brief Prepare a single-parameter statement, bind an int64, step, and finalize it.

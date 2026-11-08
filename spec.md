@@ -164,11 +164,11 @@ The interface is exposed through a single primary header (`libpcache.h`), which 
 
 **Descriptor model.** Each open volume is identified by a positive integer, analogous to a POSIX file descriptor. The value zero is reserved to signal failure at open time; any strictly positive value represents a valid descriptor, which must be supplied in all subsequent operations on the volume. There is no fixed limit on the number of simultaneously open handles; the internal table grows dynamically as needed.
 
-**Error propagation.** Public functions do not use their return value to signal operation-level failure. Instead, they accept as a final argument a pointer to a function-specific error enumeration, named `pcache_<function>_error`, into which the outcome of the operation is recorded. Each function therefore exposes only the error conditions it can actually produce, avoiding the conflation of unrelated failure modes into a single catch-all type. When a function may fail due to errors originating in underlying subsystems — typically the SQLite engine or POSIX system calls —, additional pointers are provided, one per possible error source, allowing the caller to inspect the original error code without ambiguity. Any of these pointers may be `NULL` if the caller does not wish to collect the corresponding information. Omitting an error pointer never changes which operation steps are performed.
+**Error propagation.** Public functions do not use their return value to signal operation-level failure. Instead, they accept as a final argument a pointer to a function-specific error enumeration, named `pcache_<function>_error`, into which the outcome of the operation is recorded. Each function therefore exposes only the error conditions it can actually produce, avoiding the conflation of unrelated failure modes into a single catch-all type. When a function may fail due to errors originating in underlying subsystems — typically the SQLite engine or operating-system calls —, additional pointers are provided, one per possible error source, allowing the caller to inspect the original error code without ambiguity. Any of these pointers may be `NULL` if the caller does not wish to collect the corresponding information. Omitting an error pointer never changes which operation steps are performed.
 
 **Error enumerations.** The values of each `pcache_<function>_error` enumeration are assigned explicitly, so that numeric codes remain stable and can be compared or logged without ambiguity. They adopt descriptive English names, avoiding POSIX-inherited abbreviations (for instance, `PCACHE_OPEN_NO_SUCH_DEVICE_OR_ADDRESS` is used in place of `PCACHE_OPEN_ENXIO`). All such enumerations are declared together in `libpcache_errors.h`.
 
-**Per-operation durability.** Functions that modify the volume accept a boolean `durable` parameter that controls, at the call level, whether the operation waits for `fsync` to complete before returning. When true, it guarantees that the committed state survives a sudden system failure; when false, the call returns as soon as the write has been handed off to the operating system. This behaviour is independent of whether the caller supplies the optional `error`, `sqlite_error`, or `posix_error` output pointers.
+**Per-operation durability.** Functions that modify the volume accept a boolean `durable` parameter that controls, at the call level, whether the operation waits for `fsync` to complete before returning. When true, it guarantees that the committed state survives a sudden system failure; when false, the call returns as soon as the write has been handed off to the operating system. This behaviour is independent of whether the caller supplies the optional `error`, `sqlite_error`, or `os_error` output pointers.
 
 ### Types and Structures
 
@@ -223,7 +223,7 @@ void pcache_create(
     bool                        preallocate_datafile,
     pcache_create_error        *error,
     int                        *sqlite_error,
-    int                        *posix_error
+    int                        *os_error
 );
 ```
 
@@ -236,7 +236,7 @@ pcache_handle pcache_open(
     const pcache_file_pair *paths,
     pcache_open_error      *error,
     int                    *sqlite_error,
-    int                    *posix_error
+    int                    *os_error
 );
 ```
 
@@ -247,7 +247,7 @@ void pcache_close(
     pcache_handle       handle,
     pcache_close_error *error,
     int                *sqlite_error,
-    int                *posix_error
+    int                *os_error
 );
 ```
 
@@ -289,7 +289,7 @@ void pcache_put_page(
     bool                    durable,
     pcache_put_error       *error,
     int                    *sqlite_error,
-    int                    *posix_error
+    int                    *os_error
 );
 ```
 
@@ -307,7 +307,7 @@ void pcache_put_pages(
     bool                     durable,
     pcache_put_error        *error,
     int                     *sqlite_error,
-    int                     *posix_error
+    int                     *os_error
 );
 ```
 
@@ -343,7 +343,7 @@ void pcache_put_pages_with_counter(
     bool                     durable,
     pcache_put_error        *error,
     int                     *sqlite_error,
-    int                     *posix_error
+    int                     *os_error
 );
 ```
 
@@ -362,7 +362,7 @@ void pcache_get_pages_with_counter(
     void                    *pages_buffer,
     pcache_get_error        *error,
     int                     *sqlite_error,
-    int                     *posix_error
+    int                     *os_error
 );
 ```
 
@@ -400,7 +400,7 @@ void pcache_delete_pages_with_counter(
     bool                 durable,
     pcache_delete_error *error,
     int                 *sqlite_error,
-    int                 *posix_error
+    int                 *os_error
 );
 ```
 
@@ -413,7 +413,7 @@ void pcache_get_page(
     void                   *page_buffer,
     pcache_get_error       *error,
     int                    *sqlite_error,
-    int                    *posix_error
+    int                    *os_error
 );
 ```
 
@@ -427,7 +427,7 @@ void pcache_get_pages(
     void                    *pages_buffer,
     pcache_get_error        *error,
     int                     *sqlite_error,
-    int                     *posix_error
+    int                     *os_error
 );
 ```
 
@@ -502,7 +502,7 @@ void pcache_get_pages_range(
     uint32_t         *count_out,
     pcache_get_error *error,
     int              *sqlite_error,
-    int              *posix_error
+    int              *os_error
 );
 ```
 
@@ -528,7 +528,7 @@ void pcache_get_page(
     void             *page_buffer,
     pcache_get_error *error,
     int              *sqlite_error,
-    int              *posix_error
+    int              *os_error
 );
 ```
 
@@ -566,7 +566,7 @@ void pcache_delete_page(
     bool                 durable,
     pcache_delete_error *error,
     int                 *sqlite_error,
-    int                 *posix_error
+    int                 *os_error
 );
 ```
 
@@ -581,7 +581,7 @@ void pcache_delete_pages(
     bool                 durable,
     pcache_delete_error *error,
     int                 *sqlite_error,
-    int                 *posix_error
+    int                 *os_error
 );
 ```
 
@@ -603,7 +603,7 @@ void pcache_delete_pages_range(
     bool                 durable,
     pcache_delete_error *error,
     int                 *sqlite_error,
-    int                 *posix_error
+    int                 *os_error
 );
 ```
 
@@ -634,7 +634,7 @@ void pcache_defragment(
     bool                      durable,
     pcache_defragment_error  *error,
     int                      *sqlite_error,
-    int                      *posix_error
+    int                      *os_error
 );
 ```
 
@@ -647,7 +647,7 @@ void pcache_set_max_pages(
     bool                         durable,
     pcache_set_max_pages_error  *error,
     int                         *sqlite_error,
-    int                         *posix_error
+    int                         *os_error
 );
 ```
 
@@ -661,14 +661,14 @@ void pcache_preallocate(
     bool                      durable,
     pcache_preallocate_error *error,
     int                      *sqlite_error,
-    int                      *posix_error
+    int                      *os_error
 );
 ```
 
 ## Language and Toolchain
 
 - **Language standard:** C17 (ISO/IEC 9899:2018).
-- **Compiler:** clang.
+- **Compiler:** clang (macOS, Linux) or MSVC (Windows).
 - **Build system:** CMake.
 
 ## Dependencies
@@ -679,6 +679,14 @@ void pcache_preallocate(
 ## Supported Platforms
 
 - macOS and Linux.
+- Windows (x64, MSVC). On Windows:
+  - Paths in `pcache_file_pair` are interpreted as UTF-8, matching SQLite's own path encoding.
+  - The data file is opened in binary mode and shared for reading, writing and deletion, so it behaves like a POSIX file descriptor.
+  - Positional reads and writes use `ReadFile`/`WriteFile` with an explicit offset; `fsync` is implemented with `FlushFileBuffers`; truncation and extension use `SetFileInformationByHandle` (`FileEndOfFileInfo`).
+  - Values reported through `os_error` are native Win32 system error codes (as returned by `GetLastError()`), not `errno` values; no translation is performed. Where a POSIX build reports `EIO` for a failure that has no underlying system error (for example a short read past the end of the data file), Windows reports `ERROR_IO_DEVICE`.
+  - The shared library is built as `pcache.dll` with all of its symbols exported.
+
+Platform-specific system calls are confined to an internal portability layer (`src/platform.c`); the rest of the implementation is platform-independent.
 
 Supports systems where an int is 32 bits, 64 bits or more.
 
@@ -690,7 +698,6 @@ Detailed documentation: [spec_repl.md](spec_repl.md)
 
 ## Future Work
 
-- Windows support.
 - Additional replacement policies, notably those based on popularity counters (*least frequently used*).
 
 ## License
