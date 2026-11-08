@@ -28,6 +28,8 @@ Pick the policy that suits your workload at creation time:
 
 Resize a volume at any time with `pcache_set_max_pages`. Growing is always instant. When shrinking a FIXED volume, pages that sit beyond the new limit are moved into free slots automatically.
 
+![Animation: a full FIXED volume grows from 6 to 10 slots instantly; after deletes, shrinking back to 6 moves the pages past the limit into free slots; shrinking below the live page count is refused](doc/libpcache-elastic.svg)
+
 ### Defragmentable
 
 Over time, deletes leave gaps in the data file. One call to `pcache_defragment` packs all live pages to the front and optionally trims the file down to its minimum size. The task can be stopped at any time via a callback.

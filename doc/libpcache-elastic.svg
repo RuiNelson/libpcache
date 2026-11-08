@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="450" viewBox="0 0 850 450" role="img" aria-label="libpcache elasticity animation. A full FIXED volume with max_pages 6 grows to 10 instantly; new pages fill slots 7 and 8; slots 2 and 4 are deleted; shrinking back to 6 moves pages 7 and 8 into the free slots 2 and 4; a request to shrink to 4 is refused because 6 live pages would not fit.">
+<title>libpcache: elastic capacity</title>
+<defs>
+<pattern id="gmin" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M16 0H0V16" fill="none" stroke="rgba(31,79,168,.13)" stroke-width="1"></path></pattern>
+<pattern id="gmaj" width="80" height="80" patternUnits="userSpaceOnUse"><rect width="80" height="80" fill="url(#gmin)"></rect><path d="M80 0H0V80" fill="none" stroke="rgba(31,79,168,.28)" stroke-width="1"></path></pattern>
+<pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#3a372e" stroke-width="1"></line></pattern>
+<pattern id="hatchl" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="6" stroke="#f4efe0" stroke-opacity=".45" stroke-width="1"></line></pattern>
+<style>
+.disp{font-family:"Big Shoulders Display","Arial Narrow",sans-serif;font-weight:800;letter-spacing:.02em}
+.lbl,.cell,.note,.cap{font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,"Courier New",monospace}
+.lbl{font-size:11px;font-weight:600;letter-spacing:.14em}
+.cell{font-size:12px;font-weight:500}
+.note{font-size:12px;font-style:italic}
+.cap{font-size:13px;font-weight:500}
+.a{animation:20s cubic-bezier(.2,0,0,1) infinite}
+@keyframes w1{0%,12.4%{opacity:1}12.5%,100%{opacity:0}}
+@keyframes w2{0%,12.4%{opacity:0}12.5%,22.4%{opacity:1}22.5%,100%{opacity:0}}
+@keyframes w3{0%,22.4%{opacity:0}22.5%,37.4%{opacity:1}37.5%,100%{opacity:0}}
+@keyframes w4{0%,37.4%{opacity:0}37.5%,49.9%{opacity:1}50%,100%{opacity:0}}
+@keyframes w5{0%,49.9%{opacity:0}50%,74.9%{opacity:1}75%,100%{opacity:0}}
+@keyframes w6{0%,74.9%{opacity:0}75%,89.9%{opacity:1}90%,100%{opacity:0}}
+@keyframes w7{0%,89.9%{opacity:0}90%,100%{opacity:1}}
+@keyframes lim{0%,14%{transform:translate(0,0)}18%,68%{transform:translate(272px,0)}71%,100%{transform:translate(0,0)}}
+@keyframes l6{0%,14%{opacity:1}14.1%,70.4%{opacity:0}70.5%,100%{opacity:1}}
+@keyframes l10{0%,14%{opacity:0}14.1%,70.4%{opacity:1}70.5%,100%{opacity:0}}
+@keyframes ext{0%,15%{opacity:0}18%,68%{opacity:1}71%,100%{opacity:0}}
+@keyframes c66{0%,13.9%{opacity:1}14%,70.9%{opacity:0}71%,100%{opacity:1}}
+@keyframes c610{0%,13.9%{opacity:0}14%,27.9%{opacity:1}28%,46.9%{opacity:0}47%,70.9%{opacity:1}71%,100%{opacity:0}}
+@keyframes c710{0%,27.9%{opacity:0}28%,32.9%{opacity:1}33%,42.9%{opacity:0}43%,46.9%{opacity:1}47%,100%{opacity:0}}
+@keyframes c810{0%,32.9%{opacity:0}33%,42.9%{opacity:1}43%,100%{opacity:0}}
+@keyframes s2{0%,40%{opacity:1}43%,100%{opacity:0}}
+@keyframes s4{0%,44%{opacity:1}47%,100%{opacity:0}}
+@keyframes d2{0%,39.9%{opacity:0}40%,43%{opacity:1}44%,100%{opacity:0}}
+@keyframes d4{0%,43.9%{opacity:0}44%,47%{opacity:1}48%,100%{opacity:0}}
+@keyframes p7{0%,25%{opacity:0;transform:translate(0,-40px)}26.5%{opacity:1}28%,56%{opacity:1;transform:translate(0,0)}58.5%{transform:translate(-170px,-50px)}61%,100%{opacity:1;transform:translate(-340px,0)}}
+@keyframes p8{0%,30%{opacity:0;transform:translate(0,-40px)}31.5%{opacity:1}33%,62%{opacity:1;transform:translate(0,0)}64.5%{transform:translate(-136px,-50px)}67%,100%{opacity:1;transform:translate(-272px,0)}}
+@keyframes bey{0%,52.4%{opacity:0}52.5%,56%{opacity:1}57%,100%{opacity:0}}
+@keyframes g6{0%,52.4%{opacity:0}52.5%,68%{opacity:1}70%,100%{opacity:0}}
+@keyframes g4{0%,76.4%{opacity:0}76.5%,88%{opacity:1}89.5%,100%{opacity:0}}
+@keyframes rej{0%,78.9%{opacity:0}79%,88%{opacity:1}89.5%,100%{opacity:0}}
+#cap1,#n1{animation-name:w1}#cap2,#n2{animation-name:w2}#cap3,#n3{animation-name:w3}#cap4,#n4{animation-name:w4}
+#cap5,#n5{animation-name:w5}#cap6,#n6{animation-name:w6}#cap7,#n7{animation-name:w7}
+#lim{animation-name:lim}#l6{animation-name:l6}#l10{animation-name:l10}#ext{animation-name:ext}
+#c66{animation-name:c66}#c610{animation-name:c610}#c710{animation-name:c710}#c810{animation-name:c810}
+#s2{animation-name:s2}#s4{animation-name:s4}#d2{animation-name:d2}#d4{animation-name:d4}
+#p7{animation-name:p7}#p8{animation-name:p8}
+#bey{animation-name:bey}#g6{animation-name:g6}#g4{animation-name:g4}#rej{animation-name:rej}
+@media (prefers-reduced-motion:reduce){.a{animation:none}}
+</style>
+</defs>
+
+<!-- ground -->
+<rect width="850" height="450" fill="#f4efe0"></rect>
+<rect width="850" height="450" fill="url(#gmaj)"></rect>
+
+<!-- header -->
+<text class="disp" x="32" y="62" font-size="44" fill="#14130f">LIBPCACHE</text>
+<text class="lbl" x="818" y="46" text-anchor="end" fill="#3a372e">ELASTIC CAPACITY</text>
+<text class="lbl" x="818" y="63" text-anchor="end" fill="#6b6657">SHEET 02 / REV A</text>
+<line x1="24" y1="76" x2="826" y2="76" stroke="#14130f" stroke-width="1.5"></line>
+
+<!-- volume panel -->
+<rect x="35" y="103" width="786" height="272" fill="#14130f"></rect>
+<rect x="32" y="100" width="786" height="272" fill="#f4efe0" stroke="#14130f" stroke-width="1.5"></rect>
+<rect x="32" y="100" width="786" height="22" fill="#14130f"></rect>
+<text class="lbl" x="42" y="115" fill="#f4efe0">VOLUME · POLICY FIXED · PAGE_SIZE 32K</text>
+<text id="c66" class="lbl a" x="808" y="115" text-anchor="end" fill="#f4efe0">LIVE 6 / MAX 6</text>
+<text id="c610" class="lbl a" x="808" y="115" text-anchor="end" fill="#f4efe0" opacity="0">LIVE 6 / MAX 10</text>
+<text id="c710" class="lbl a" x="808" y="115" text-anchor="end" fill="#f4efe0" opacity="0">LIVE 7 / MAX 10</text>
+<text id="c810" class="lbl a" x="808" y="115" text-anchor="end" fill="#f4efe0" opacity="0">LIVE 8 / MAX 10</text>
+
+<!-- row labels -->
+<text class="lbl" x="48" y="166" fill="#6b6657">ROWID</text>
+<text class="lbl" x="48" y="212" fill="#6b6657">PAGE</text>
+<text class="lbl" x="48" y="267" fill="#6b6657">ID</text>
+
+<!-- slots 1-6 (base capacity) -->
+<g class="cell" fill="#3a372e" text-anchor="middle">
+<text x="148" y="166">1</text><text x="216" y="166">2</text><text x="284" y="166">3</text>
+<text x="352" y="166">4</text><text x="420" y="166">5</text><text x="488" y="166">6</text>
+</g>
+<g fill="none" stroke="#a39d88" stroke-width="1" stroke-dasharray="3 3">
+<rect x="120" y="176" width="56" height="64"></rect><rect x="188" y="176" width="56" height="64"></rect>
+<rect x="256" y="176" width="56" height="64"></rect><rect x="324" y="176" width="56" height="64"></rect>
+<rect x="392" y="176" width="56" height="64"></rect><rect x="460" y="176" width="56" height="64"></rect>
+<rect x="120" y="252" width="56" height="22"></rect><rect x="188" y="252" width="56" height="22"></rect>
+<rect x="256" y="252" width="56" height="22"></rect><rect x="324" y="252" width="56" height="22"></rect>
+<rect x="392" y="252" width="56" height="22"></rect><rect x="460" y="252" width="56" height="22"></rect>
+</g>
+
+<!-- slots 7-10 (added by growth) -->
+<g id="ext" class="a" opacity="0">
+<g class="cell" fill="#3a372e" text-anchor="middle">
+<text x="556" y="166">7</text><text x="624" y="166">8</text><text x="692" y="166">9</text><text x="760" y="166">10</text>
+</g>
+<g fill="none" stroke="#a39d88" stroke-width="1" stroke-dasharray="3 3">
+<rect x="528" y="176" width="56" height="64"></rect><rect x="596" y="176" width="56" height="64"></rect>
+<rect x="664" y="176" width="56" height="64"></rect><rect x="732" y="176" width="56" height="64"></rect>
+<rect x="528" y="252" width="56" height="22"></rect><rect x="596" y="252" width="56" height="22"></rect>
+<rect x="664" y="252" width="56" height="22"></rect><rect x="732" y="252" width="56" height="22"></rect>
+</g>
+</g>
+
+<!-- live pages 1-6 -->
+<g id="s1"><rect x="120" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="120" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="120" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="148" y="267" text-anchor="middle" fill="#14130f">11 …</text></g>
+<g id="s2" class="a"><rect x="188" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="188" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="188" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="216" y="267" text-anchor="middle" fill="#14130f">22 …</text></g>
+<g id="s3"><rect x="256" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="256" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="256" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="284" y="267" text-anchor="middle" fill="#14130f">33 …</text></g>
+<g id="s4" class="a"><rect x="324" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="324" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="324" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="352" y="267" text-anchor="middle" fill="#14130f">44 …</text></g>
+<g id="s5"><rect x="392" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="392" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="392" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="420" y="267" text-anchor="middle" fill="#14130f">55 …</text></g>
+<g id="s6"><rect x="460" y="176" width="56" height="64" fill="#ddd5ba"></rect><rect x="460" y="176" width="56" height="64" fill="url(#hatch)"></rect><rect x="460" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="488" y="267" text-anchor="middle" fill="#14130f">66 …</text></g>
+
+<!-- delete flashes -->
+<rect id="d2" class="a" x="184" y="172" width="64" height="106" fill="#c8321f" fill-opacity=".1" stroke="#c8321f" stroke-width="1.5" opacity="0"></rect>
+<rect id="d4" class="a" x="320" y="172" width="64" height="106" fill="#c8321f" fill-opacity=".1" stroke="#c8321f" stroke-width="1.5" opacity="0"></rect>
+
+<!-- beyond-limit highlight -->
+<g id="bey" class="a" opacity="0" fill="none" stroke="#c8321f" stroke-width="2" stroke-dasharray="4 3">
+<rect x="524" y="172" width="64" height="106"></rect>
+<rect x="592" y="172" width="64" height="106"></rect>
+</g>
+
+<!-- new pages 7 and 8 (they move on shrink) -->
+<g id="p7" class="a" opacity="0"><rect x="528" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="528" y="176" width="56" height="64" fill="url(#hatchl)"></rect><rect x="528" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="556" y="267" text-anchor="middle" fill="#1f4fa8">77 …</text></g>
+<g id="p8" class="a" opacity="0"><rect x="596" y="176" width="56" height="64" fill="#1f4fa8"></rect><rect x="596" y="176" width="56" height="64" fill="url(#hatchl)"></rect><rect x="596" y="176" width="56" height="64" fill="none" stroke="#14130f" stroke-width="1.5"></rect><text class="cell" x="624" y="267" text-anchor="middle" fill="#1f4fa8">88 …</text></g>
+
+<!-- refused shrink to 4 -->
+<g id="rej" class="a" opacity="0">
+<rect x="388" y="172" width="132" height="106" fill="#c8321f" fill-opacity=".12" stroke="#c8321f" stroke-width="1.5"></rect>
+<rect x="420" y="199" width="68" height="18" fill="#f4efe0" stroke="#c8321f" stroke-width="1.5"></rect>
+<text class="lbl" x="454" y="212" text-anchor="middle" fill="#c8321f">REFUSED</text>
+</g>
+
+<!-- ghost limits -->
+<g id="g6" class="a" opacity="0">
+<line x1="522" y1="146" x2="522" y2="284" stroke="#c8321f" stroke-width="2" stroke-dasharray="5 4"></line>
+<rect x="402" y="288" width="114" height="18" fill="#f4efe0" stroke="#c8321f" stroke-width="1" stroke-dasharray="3 2"></rect>
+<text class="lbl" x="459" y="301" text-anchor="middle" fill="#c8321f">NEW MAX 6</text>
+</g>
+<g id="g4" class="a" opacity="0">
+<line x1="386" y1="146" x2="386" y2="284" stroke="#c8321f" stroke-width="2" stroke-dasharray="5 4"></line>
+<rect x="266" y="288" width="114" height="18" fill="#f4efe0" stroke="#c8321f" stroke-width="1" stroke-dasharray="3 2"></rect>
+<text class="lbl" x="323" y="301" text-anchor="middle" fill="#c8321f">NEW MAX 4</text>
+</g>
+
+<!-- capacity limit (moves) -->
+<g id="lim" class="a">
+<line x1="522" y1="146" x2="522" y2="284" stroke="#14130f" stroke-width="2.5"></line>
+<path d="M516 146H528" stroke="#14130f" stroke-width="2.5"></path>
+<rect x="402" y="288" width="114" height="18" fill="#14130f"></rect>
+<text id="l6" class="lbl a" x="459" y="301" text-anchor="middle" fill="#f4efe0">MAX_PAGES 6</text>
+<text id="l10" class="lbl a" x="459" y="301" text-anchor="middle" fill="#f4efe0" opacity="0">MAX_PAGES 10</text>
+</g>
+
+<!-- notes -->
+<line x1="44" y1="326" x2="806" y2="326" stroke="#a39d88" stroke-width="1" stroke-dasharray="4 3"></line>
+<g class="note" fill="#3a372e">
+<text id="n1" class="a" x="48" y="352">6 of 6 slots used: the volume is full, a put would fail</text>
+<text id="n2" class="a" x="48" y="352" opacity="0">only max_pages in the metadata changes; no page is copied</text>
+<text id="n3" class="a" x="48" y="352" opacity="0">new pages fill the added slots 7 and 8</text>
+<text id="n4" class="a" x="48" y="352" opacity="0">slots 2 and 4 are now free</text>
+<text id="n5" class="a" x="48" y="352" opacity="0">pages 7 and 8 sit past the new limit → moved into free slots 2 and 4, rows 7–10 dropped</text>
+<text id="n6" class="a" x="48" y="352" opacity="0">6 live pages cannot fit in 4 → PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES, volume unchanged</text>
+<text id="n7" class="a" x="48" y="352" opacity="0">FIXED volumes never lose a page to a resize</text>
+</g>
+
+<!-- caption bar -->
+<line x1="24" y1="394" x2="826" y2="394" stroke="#14130f" stroke-width="1.5"></line>
+<g id="cap1" class="a"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">01 / FULL</text><text class="cap" x="172" y="425" fill="#14130f">FIXED volume, max_pages = 6: every slot is used</text></g>
+<g id="cap2" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">02 / GROW</text><text class="cap" x="172" y="425" fill="#14130f">pcache_set_max_pages(h, 10)  instant: only the limit moves</text></g>
+<g id="cap3" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">03 / PUT</text><text class="cap" x="172" y="425" fill="#14130f">new pages land in the added slots</text></g>
+<g id="cap4" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">04 / DELETE</text><text class="cap" x="172" y="425" fill="#14130f">pcache_delete_page frees slots 2 and 4</text></g>
+<g id="cap5" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">05 / SHRINK</text><text class="cap" x="172" y="425" fill="#14130f">pcache_set_max_pages(h, 6)  pages past the limit move into free slots</text></g>
+<g id="cap6" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">06 / GUARD</text><text class="cap" x="172" y="425" fill="#14130f">pcache_set_max_pages(h, 4)  refused: 6 live pages would not fit</text></g>
+<g id="cap7" class="a" opacity="0"><text class="disp" x="32" y="427" font-size="24" fill="#14130f">07 / ELASTIC</text><text class="cap" x="172" y="425" fill="#14130f">resize any time: grow instantly, shrink without losing pages</text></g>
+</svg>
