@@ -73,7 +73,7 @@ void free_page_restores(page_restore *restores, size_t count) {
     free(restores);
 }
 
-bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *posix_error) {
+bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *os_error) {
     for (size_t idx = 0; idx < count; idx++) {
         if (!restores[idx].needs_restore)
             continue;
@@ -81,8 +81,8 @@ bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, 
         platform_ssize_t written =
             platform_pwrite(volume->fd, restores[idx].page_data, volume->config.page_size, byte_offset);
         if (written != (platform_ssize_t)volume->config.page_size) {
-            if (posix_error && *posix_error == 0)
-                *posix_error = written < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
+            if (os_error && *os_error == 0)
+                *os_error = written < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
             return false;
         }
     }
@@ -163,7 +163,7 @@ int64_t fifo_locate_run_end(pcache_volume *volume, int *sqlite_return_code) {
 }
 
 fifo_compact_result
-fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *posix_return_code) {
+fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *os_return_code) {
     const int64_t max_pages = (int64_t)volume->config.max_pages;
     const size_t  page_size = volume->config.page_size;
     const size_t  id_size   = volume->config.id_size;
@@ -265,8 +265,8 @@ fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_co
             if (io == (platform_ssize_t)page_size)
                 io = platform_pwrite(volume->fd, page_buf, page_size, rowid_to_offset(dst, page_size));
             if (io != (platform_ssize_t)page_size) {
-                *posix_return_code = io < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
-                result             = FIFO_COMPACT_IO_ERROR;
+                *os_return_code = io < 0 ? platform_last_error() : PLATFORM_ERROR_IO;
+                result          = FIFO_COMPACT_IO_ERROR;
                 break;
             }
 

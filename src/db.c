@@ -133,15 +133,15 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error) {
     return rowid;
 }
 
-void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqlite_error) {
+void wait_for_synchronization(pcache_volume *volume, int *os_error, int *sqlite_error) {
 #ifdef PCACHE_TESTING
     if (s_test_sync_failure) {
-        SET_ERR(posix_error, PLATFORM_ERROR_IO);
+        SET_ERR(os_error, PLATFORM_ERROR_IO);
         return;
     }
 #endif
     if (platform_fsync(volume->fd) != 0) {
-        SET_ERR(posix_error, platform_last_error());
+        SET_ERR(os_error, platform_last_error());
         return;
     }
     int sqlite_rc = sqlite3_wal_checkpoint_v2(volume->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);
@@ -150,17 +150,17 @@ void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqli
     }
 }
 
-bool sync_if_durable(pcache_volume *volume, bool durable, int *posix_error, int *sqlite_error) {
+bool sync_if_durable(pcache_volume *volume, bool durable, int *os_error, int *sqlite_error) {
     if (!durable)
         return true;
 
-    int  local_posix_error   = 0;
+    int  local_os_error      = 0;
     int  local_sqlite_error  = 0;
-    int *actual_posix_error  = posix_error ? posix_error : &local_posix_error;
+    int *actual_os_error     = os_error ? os_error : &local_os_error;
     int *actual_sqlite_error = sqlite_error ? sqlite_error : &local_sqlite_error;
 
-    wait_for_synchronization(volume, actual_posix_error, actual_sqlite_error);
-    return *actual_posix_error == 0 && *actual_sqlite_error == 0;
+    wait_for_synchronization(volume, actual_os_error, actual_sqlite_error);
+    return *actual_os_error == 0 && *actual_sqlite_error == 0;
 }
 
 int db_exec_bind_int64(sqlite3 *db, const char *sql, int64_t value) {

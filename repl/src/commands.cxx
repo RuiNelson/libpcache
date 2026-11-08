@@ -44,11 +44,11 @@ static void create_volume(const char *db_path,
 
     pcache_create_error create_err;
     int                 sqlite_err = 0;
-    int                 posix_err  = 0;
-    pcache_create(&paths, &config, prealloc_db, prealloc_data, &create_err, &sqlite_err, &posix_err);
+    int                 os_err     = 0;
+    pcache_create(&paths, &config, prealloc_db, prealloc_data, &create_err, &sqlite_err, &os_err);
 
     if (create_err != PCACHE_CREATE_OK) {
-        print_error(static_cast<int>(create_err), sqlite_err, posix_err);
+        print_error(static_cast<int>(create_err), sqlite_err, os_err);
         return;
     }
 
@@ -63,11 +63,11 @@ static bool open_volume(const char *db_path, const char *data_path, repl_context
 
     pcache_open_error open_err;
     int               sqlite_err = 0;
-    int               posix_err  = 0;
-    pcache_handle     handle     = pcache_open(&paths, &open_err, &sqlite_err, &posix_err);
+    int               os_err     = 0;
+    pcache_handle     handle     = pcache_open(&paths, &open_err, &sqlite_err, &os_err);
 
     if (handle == 0) {
-        print_error(static_cast<int>(open_err), sqlite_err, posix_err);
+        print_error(static_cast<int>(open_err), sqlite_err, os_err);
         return false;
     }
 

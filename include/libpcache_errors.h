@@ -23,7 +23,7 @@
 
 // General Errors - Similar to a POSIX Error
 
-#define PCACHE_CODE_IO_ERROR                   EIO    /** A POSIX I/O call failed; inspect @p posix_error. */
+#define PCACHE_CODE_IO_ERROR                   EIO    /** An OS I/O call failed; inspect @p os_error. */
 #define PCACHE_CODE_OUT_OF_MEMORY              ENOMEM /** Could not allocate memory */
 #define PCACHE_CODE_INVALID_HANDLE             EBADF  /** The handle is zero or does not refer to an open volume. */
 
@@ -64,7 +64,7 @@ typedef enum pcache_create_error {
         PCACHE_CODE_CREATE_INVALID_ARGUMENT, /**< A required pointer was NULL or a numeric parameter was zero. */
     PCACHE_CREATE_FILE_EXISTS =
         PCACHE_CODE_CREATE_FILE_EXISTS,                    /**< At least one of the two volume files already exists. */
-    PCACHE_CREATE_IO_ERROR     = PCACHE_CODE_IO_ERROR,     /**< A POSIX I/O call failed; inspect @p posix_error. */
+    PCACHE_CREATE_IO_ERROR     = PCACHE_CODE_IO_ERROR,     /**< An OS I/O call failed; inspect @p os_error. */
     PCACHE_CREATE_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_create_error;
 
@@ -72,7 +72,7 @@ typedef enum pcache_create_error {
 typedef enum pcache_open_error {
     PCACHE_OPEN_OK           = PCACHE_CODE_OK,             /**< Operation succeeded. */
     PCACHE_OPEN_NOT_FOUND    = PCACHE_CODE_OPEN_NOT_FOUND, /**< At least one of the two volume files does not exist. */
-    PCACHE_OPEN_IO_ERROR     = PCACHE_CODE_IO_ERROR,       /**< A POSIX I/O call failed; inspect @p posix_error. */
+    PCACHE_OPEN_IO_ERROR     = PCACHE_CODE_IO_ERROR,       /**< An OS I/O call failed; inspect @p os_error. */
     PCACHE_OPEN_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR,   /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_OPEN_CORRUPT      = PCACHE_CODE_OPEN_CORRUPT,   /**< The index database is missing required metadata. */
     PCACHE_OPEN_SCHEMA_VERSION_TOO_HIGH =
@@ -89,7 +89,7 @@ typedef enum pcache_close_error {
     PCACHE_CLOSE_SQLITE_ERROR =
         PCACHE_CODE_SQLITE_ERROR, /**< sqlite3_close reported an error; inspect @p sqlite_error. */
     PCACHE_CLOSE_IO_ERROR =
-        PCACHE_CODE_IO_ERROR, /**< Closing the data file descriptor failed; inspect @p posix_error. */
+        PCACHE_CODE_IO_ERROR, /**< Closing the data file descriptor failed; inspect @p os_error. */
 } pcache_close_error;
 
 /** Outcome of ::pcache_inspect_configuration. */
@@ -108,7 +108,7 @@ typedef enum pcache_put_error {
         PCACHE_CODE_PUT_PAGE_CAPACITY_EXCEEDED, /**< FIXED volume is full and has no free slots. */
     PCACHE_PUT_DUPLICATE_ID =
         PCACHE_CODE_PUT_DUPLICATE_ID, /**< @p check_id_uniqueness was true and an identifier already exists. */
-    PCACHE_PUT_IO_ERROR         = PCACHE_CODE_IO_ERROR, /**< Writing to the data file failed; inspect @p posix_error. */
+    PCACHE_PUT_IO_ERROR         = PCACHE_CODE_IO_ERROR, /**< Writing to the data file failed; inspect @p os_error. */
     PCACHE_PUT_SQLITE_ERROR     = PCACHE_CODE_SQLITE_ERROR,  /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_PUT_OUT_OF_MEMORY    = PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed while preparing the write. */
     PCACHE_PUT_INVALID_ARGUMENT = PCACHE_CODE_PUT_INVALID_ARGUMENT, /**< @p position is out of bounds, the counter would
@@ -122,7 +122,7 @@ typedef enum pcache_get_error {
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
     PCACHE_GET_NOT_FOUND =
         PCACHE_CODE_GET_PAGE_NOT_FOUND,              /**< No page with the given identifier exists in the volume. */
-    PCACHE_GET_IO_ERROR      = PCACHE_CODE_IO_ERROR, /**< Reading from the data file failed; inspect @p posix_error. */
+    PCACHE_GET_IO_ERROR      = PCACHE_CODE_IO_ERROR, /**< Reading from the data file failed; inspect @p os_error. */
     PCACHE_GET_SQLITE_ERROR  = PCACHE_CODE_SQLITE_ERROR,  /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_GET_OUT_OF_MEMORY = PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed while building IDs. */
     PCACHE_GET_INVALID_ARGUMENT = PCACHE_CODE_GET_INVALID_ARGUMENT,       /**< @p position is out of bounds, the counter
@@ -156,7 +156,7 @@ typedef enum pcache_delete_error {
     PCACHE_DELETE_INVALID_HANDLE =
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
     PCACHE_DELETE_IO_ERROR =
-        PCACHE_CODE_IO_ERROR, /**< Writing zeros to the data file failed; inspect @p posix_error. */
+        PCACHE_CODE_IO_ERROR, /**< Writing zeros to the data file failed; inspect @p os_error. */
     PCACHE_DELETE_SQLITE_ERROR  = PCACHE_CODE_SQLITE_ERROR,  /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_DELETE_OUT_OF_MEMORY = PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed. */
     PCACHE_DELETE_INVALID_RANGE = PCACHE_CODE_DELETE_INVALID_RANGE, /**< @p first is greater than @p last. */
@@ -172,7 +172,7 @@ typedef enum pcache_defragment_error {
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
     PCACHE_DEFRAGMENT_CANCELLED =
         PCACHE_CODE_DEFRAGMENT_CANCELLED, /**< The progress callback returned false; the volume remains consistent. */
-    PCACHE_DEFRAGMENT_IO_ERROR      = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p posix_error. */
+    PCACHE_DEFRAGMENT_IO_ERROR      = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p os_error. */
     PCACHE_DEFRAGMENT_SQLITE_ERROR  = PCACHE_CODE_SQLITE_ERROR,  /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_DEFRAGMENT_OUT_OF_MEMORY = PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed. */
 } pcache_defragment_error;
@@ -184,7 +184,7 @@ typedef enum pcache_set_max_pages_error {
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
     PCACHE_SET_MAX_PAGES_WOULD_DISCARD_PAGES =
         PCACHE_CODE_SET_MAX_PAGES_WOULD_DISCARD_PAGES,    /**< FIXED volume: total live pages exceed new_max_pages. */
-    PCACHE_SET_MAX_PAGES_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p posix_error. */
+    PCACHE_SET_MAX_PAGES_IO_ERROR = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p os_error. */
     PCACHE_SET_MAX_PAGES_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
     PCACHE_SET_MAX_PAGES_OUT_OF_MEMORY =
         PCACHE_CODE_OUT_OF_MEMORY, /**< Memory allocation failed during auto-relocation. */
@@ -197,7 +197,7 @@ typedef enum pcache_preallocate_error {
     PCACHE_PREALLOCATE_OK = PCACHE_CODE_OK, /**< Preallocation completed. */
     PCACHE_PREALLOCATE_INVALID_HANDLE =
         PCACHE_CODE_INVALID_HANDLE, /**< The handle is zero or does not refer to an open volume. */
-    PCACHE_PREALLOCATE_IO_ERROR     = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p posix_error. */
+    PCACHE_PREALLOCATE_IO_ERROR     = PCACHE_CODE_IO_ERROR, /**< A data-file I/O call failed; inspect @p os_error. */
     PCACHE_PREALLOCATE_SQLITE_ERROR = PCACHE_CODE_SQLITE_ERROR, /**< A SQLite call failed; inspect @p sqlite_error. */
 } pcache_preallocate_error;
 

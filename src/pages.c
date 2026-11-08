@@ -15,8 +15,8 @@ void pcache_put_page(pcache_handle     handle,
                      bool              durable,
                      pcache_put_error *error,
                      int              *sqlite_error,
-                     int              *posix_error) {
-    pcache_put_pages(handle, 1, id, page_data, fail_if_exists, durable, error, sqlite_error, posix_error);
+                     int              *os_error) {
+    pcache_put_pages(handle, 1, id, page_data, fail_if_exists, durable, error, sqlite_error, os_error);
 }
 
 void pcache_get_page(pcache_handle     handle,
@@ -24,8 +24,8 @@ void pcache_get_page(pcache_handle     handle,
                      void             *page_buffer,
                      pcache_get_error *error,
                      int              *sqlite_error,
-                     int              *posix_error) {
-    pcache_get_pages(handle, 1, id, page_buffer, error, sqlite_error, posix_error);
+                     int              *os_error) {
+    pcache_get_pages(handle, 1, id, page_buffer, error, sqlite_error, os_error);
 }
 
 /* Merge FIFO holes left by a delete into the cursor run; reports through the
@@ -36,10 +36,10 @@ static bool compact_fifo_after_delete(pcache_volume       *volume,
                                       bool                 prior_failure,
                                       pcache_delete_error *error,
                                       int                 *sqlite_error,
-                                      int                 *posix_error) {
+                                      int                 *os_error) {
     int                 sqlite_rc = 0;
-    int                 posix_rc  = 0;
-    fifo_compact_result result    = fifo_compact_holes(volume, run_end, &sqlite_rc, &posix_rc);
+    int                 os_rc     = 0;
+    fifo_compact_result result    = fifo_compact_holes(volume, run_end, &sqlite_rc, &os_rc);
     if (result == FIFO_COMPACT_OK)
         return true;
     if (!prior_failure) {
@@ -49,7 +49,7 @@ static bool compact_fifo_after_delete(pcache_volume       *volume,
                 SET_ERR(error, PCACHE_DELETE_SQLITE_ERROR);
                 break;
             case FIFO_COMPACT_IO_ERROR:
-                SET_ERR(posix_error, posix_rc);
+                SET_ERR(os_error, os_rc);
                 SET_ERR(error, PCACHE_DELETE_IO_ERROR);
                 break;
             case FIFO_COMPACT_OUT_OF_MEMORY:
@@ -71,7 +71,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
                               bool              durable,
                               pcache_put_error *error,
                               int              *sqlite_error,
-                              int              *posix_error,
+                              int              *os_error,
                               bool              skip_batch_duplicate_check) {
     /*
      * Key design:
@@ -303,7 +303,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
         platform_off_t   byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
         platform_ssize_t restore_bytes = platform_pread(volume->fd, restores[idx].page_data, page_size, byte_offset);
         if (restore_bytes != (platform_ssize_t)page_size) {
-            SET_ERR(posix_error, restore_bytes < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
+            SET_ERR(os_error, restore_bytes < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             restore_capture_ok = false;
             break;
@@ -389,10 +389,10 @@ static void _pcache_put_pages(pcache_volume    *volume,
         platform_off_t   byte_offset = rowid_to_offset(target_rowids[i], page_size);
         platform_ssize_t written     = put_pwrite(volume, page, page_size, byte_offset);
         if (written != (platform_ssize_t)page_size) {
-            SET_ERR(posix_error, written < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
+            SET_ERR(os_error, written < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             db_exec(volume->db, "ROLLBACK");
-            restore_pages(volume, restores, count, posix_error);
+            restore_pages(volume, restores, count, os_error);
             free_page_restores(restores, count);
             free(target_rowids);
             free(do_insert);
@@ -406,7 +406,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
         SET_ERR(sqlite_error, sqlite_return_code);
         SET_ERR(error, PCACHE_PUT_SQLITE_ERROR);
         db_exec(volume->db, "ROLLBACK");
-        restore_pages(volume, restores, count, posix_error);
+        restore_pages(volume, restores, count, os_error);
         free_page_restores(restores, count);
         free(target_rowids);
         free(do_insert);
@@ -424,7 +424,7 @@ static void _pcache_put_pages(pcache_volume    *volume,
 
     /* ── Optionally sync for durability ── */
     if (durable) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
+        if (!sync_if_durable(volume, true, os_error, sqlite_error)) {
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
         }
     }
@@ -438,8 +438,8 @@ void pcache_put_pages(pcache_handle     handle,
                       bool              durable,
                       pcache_put_error *error,
                       int              *sqlite_error,
-                      int              *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                      int              *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -450,7 +450,7 @@ void pcache_put_pages(pcache_handle     handle,
         return;
     }
 
-    _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, posix_error, false);
+    _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, os_error, false);
     platform_mutex_unlock(&volume->mutex);
 }
 
@@ -465,8 +465,8 @@ void pcache_put_pages_with_counter(pcache_handle     handle,
                                    bool              durable,
                                    pcache_put_error *error,
                                    int              *sqlite_error,
-                                   int              *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                                   int              *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -491,7 +491,7 @@ void pcache_put_pages_with_counter(pcache_handle     handle,
         goto unlock;
     }
 
-    _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, posix_error, true);
+    _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, os_error, true);
     free(ids);
     platform_mutex_unlock(&volume->mutex);
     return;
@@ -507,7 +507,7 @@ static void _pcache_get_pages(pcache_volume    *volume,
                               void             *pages_buffer,
                               pcache_get_error *error,
                               int              *sqlite_error,
-                              int              *posix_error) {
+                              int              *os_error) {
     /*
      * Key design:
      *   - Batch read: retrieves multiple pages in a single lock acquisition.
@@ -537,7 +537,7 @@ static void _pcache_get_pages(pcache_volume    *volume,
             platform_ssize_t bytes_read  = platform_pread(volume->fd, buffer, volume->config.page_size, byte_offset);
             if (bytes_read != (platform_ssize_t)volume->config.page_size) {
                 /* A short read (EOF) does not set errno; report PLATFORM_ERROR_IO explicitly. */
-                SET_ERR(posix_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
+                SET_ERR(os_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 all_ok = false;
             }
@@ -551,8 +551,8 @@ void pcache_get_pages(pcache_handle     handle,
                       void             *pages_buffer,
                       pcache_get_error *error,
                       int              *sqlite_error,
-                      int              *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                      int              *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -563,7 +563,7 @@ void pcache_get_pages(pcache_handle     handle,
         return;
     }
 
-    _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, posix_error);
+    _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, os_error);
     platform_mutex_unlock(&volume->mutex);
 }
 
@@ -576,8 +576,8 @@ void pcache_get_pages_with_counter(pcache_handle     handle,
                                    void             *pages_buffer,
                                    pcache_get_error *error,
                                    int              *sqlite_error,
-                                   int              *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                                   int              *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -602,7 +602,7 @@ void pcache_get_pages_with_counter(pcache_handle     handle,
         goto unlock;
     }
 
-    _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, posix_error);
+    _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, os_error);
     free(ids);
     platform_mutex_unlock(&volume->mutex);
     return;
@@ -704,8 +704,8 @@ void pcache_delete_page(pcache_handle        handle,
                         bool                 durable,
                         pcache_delete_error *error,
                         int                 *sqlite_error,
-                        int                 *posix_error) {
-    pcache_delete_pages(handle, 1, id, wipe_data_file, durable, error, sqlite_error, posix_error);
+                        int                 *os_error) {
+    pcache_delete_pages(handle, 1, id, wipe_data_file, durable, error, sqlite_error, os_error);
 }
 
 /* Caller must hold volume->mutex for the entire call. */
@@ -716,7 +716,7 @@ static void _pcache_delete_pages(pcache_volume       *volume,
                                  bool                 durable,
                                  pcache_delete_error *error,
                                  int                 *sqlite_error,
-                                 int                 *posix_error) {
+                                 int                 *os_error) {
     int64_t *rowids = malloc(count * sizeof(int64_t));
     if (!rowids) {
         SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
@@ -809,7 +809,7 @@ static void _pcache_delete_pages(pcache_volume       *volume,
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
-                    SET_ERR(posix_error, platform_last_error());
+                    SET_ERR(os_error, platform_last_error());
                     SET_ERR(error, PCACHE_DELETE_IO_ERROR);
                 }
                 break;
@@ -820,11 +820,11 @@ static void _pcache_delete_pages(pcache_volume       *volume,
     /* ── FIFO: merge the freshly created holes into the cursor run ── */
     bool compact_ok = true;
     if (fifo)
-        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, posix_error);
+        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, os_error);
 
     /* ── Optionally sync for durability ── */
     if (durable && wipe_succeeded && compact_ok) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
+        if (!sync_if_durable(volume, true, os_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }
     }
@@ -839,7 +839,7 @@ void pcache_delete_pages(pcache_handle        handle,
                          bool                 durable,
                          pcache_delete_error *error,
                          int                 *sqlite_error,
-                         int                 *posix_error) {
+                         int                 *os_error) {
     /*
      * Key design:
      *   - Missing ids are silently skipped; the deletion of the matching pages is committed
@@ -849,7 +849,7 @@ void pcache_delete_pages(pcache_handle        handle,
      *   - Safe orphans: a committed-but-unwipped slot is still reclaimed on next reuse
      *     or via defragmentation.
      */
-    ZERO_3ERR(error, sqlite_error, posix_error);
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -860,7 +860,7 @@ void pcache_delete_pages(pcache_handle        handle,
         return;
     }
 
-    _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, posix_error);
+    _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, os_error);
     platform_mutex_unlock(&volume->mutex);
 }
 
@@ -874,8 +874,8 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
                                       bool                 durable,
                                       pcache_delete_error *error,
                                       int                 *sqlite_error,
-                                      int                 *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                                      int                 *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (count == 0)
         return;
@@ -900,7 +900,7 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
         goto unlock;
     }
 
-    _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, posix_error);
+    _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, os_error);
     free(ids);
     platform_mutex_unlock(&volume->mutex);
     return;
@@ -916,7 +916,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
                                bool                 durable,
                                pcache_delete_error *error,
                                int                 *sqlite_error,
-                               int                 *posix_error) {
+                               int                 *os_error) {
     /*
      * Key design:
      *   - Single transaction: SELECT (when wipe is requested) and UPDATE happen together,
@@ -927,7 +927,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
      *   - Prepared statements are created on demand; range deletes are infrequent enough
      *     that caching them in the volume struct is not worth the complexity.
      */
-    ZERO_3ERR(error, sqlite_error, posix_error);
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     pcache_volume *volume = volume_from_handle(handle);
     if (!volume) {
@@ -1073,7 +1073,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
-                    SET_ERR(posix_error, platform_last_error());
+                    SET_ERR(os_error, platform_last_error());
                     SET_ERR(error, PCACHE_DELETE_IO_ERROR);
                 }
                 break;
@@ -1086,11 +1086,11 @@ void pcache_delete_pages_range(pcache_handle        handle,
     /* ── FIFO: merge the freshly created holes into the cursor run ── */
     bool compact_ok = true;
     if (fifo && deleted_count > 0)
-        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, posix_error);
+        compact_ok = compact_fifo_after_delete(volume, fifo_run_end, !wipe_succeeded, error, sqlite_error, os_error);
 
     /* ── Optionally sync for durability ── */
     if (durable && wipe_succeeded && compact_ok) {
-        if (!sync_if_durable(volume, true, posix_error, sqlite_error)) {
+        if (!sync_if_durable(volume, true, os_error, sqlite_error)) {
             SET_ERR(error, PCACHE_DELETE_IO_ERROR);
         }
     }
@@ -1156,8 +1156,8 @@ void pcache_get_pages_range(pcache_handle     handle,
                             uint32_t         *count_out,
                             pcache_get_error *error,
                             int              *sqlite_error,
-                            int              *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                            int              *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     pcache_volume *volume = volume_from_handle(handle);
     if (!volume) {
@@ -1228,7 +1228,7 @@ void pcache_get_pages_range(pcache_handle     handle,
             platform_off_t   offset     = rowid_to_offset(rowid, page_size);
             platform_ssize_t bytes_read = platform_pread(volume->fd, page_dest, page_size, offset);
             if (bytes_read != (platform_ssize_t)page_size) {
-                SET_ERR(posix_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
+                SET_ERR(os_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 sqlite3_finalize(select_stmt);
                 goto unlock;

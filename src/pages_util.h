@@ -20,7 +20,7 @@ bool wipe_page_at_rowid(pcache_volume *volume, int64_t rowid);
 void free_page_restores(page_restore *restores, size_t count);
 
 /** @brief Write back page data from a page_restore array, stopping on the first failure. */
-bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *posix_error);
+bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *os_error);
 
 /** @brief Write a single page to the data file at the given byte offset using pwrite. */
 platform_ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, platform_off_t byte_offset);
@@ -68,7 +68,7 @@ typedef enum {
  * crash never leaves a live page unreachable. Caller must hold volume->mutex.
  */
 fifo_compact_result
-fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *posix_return_code);
+fifo_compact_holes(pcache_volume *volume, int64_t run_end, int *sqlite_return_code, int *os_return_code);
 
 /** @brief Validate arguments for ::pcache_put_pages_with_counter. */
 bool validate_with_counter_args(size_t            id_size,

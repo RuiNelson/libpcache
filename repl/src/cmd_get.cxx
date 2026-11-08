@@ -23,11 +23,11 @@ bool cmd_get(repl_context *ctx, const command &cmd) {
     std::vector<uint8_t> page_buf(config.page_size);
 
     pcache_get_error err;
-    int              sqlite_err = 0, posix_err = 0;
-    pcache_get_page(ctx->handle, id_buf.data(), page_buf.data(), &err, &sqlite_err, &posix_err);
+    int              sqlite_err = 0, os_err = 0;
+    pcache_get_page(ctx->handle, id_buf.data(), page_buf.data(), &err, &sqlite_err, &os_err);
 
     if (err != PCACHE_GET_OK) {
-        print_error(static_cast<int>(err), sqlite_err, posix_err);
+        print_error(static_cast<int>(err), sqlite_err, os_err);
         return false;
     }
 

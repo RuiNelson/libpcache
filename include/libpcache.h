@@ -10,10 +10,10 @@
  * @par Error reporting
  * Functions do not use their return value to signal errors.  Instead each
  * function accepts a pointer to a function-specific @c pcache_<fn>_error
- * enumeration.  Additional @p sqlite_error and @p posix_error out-parameters
+ * enumeration.  Additional @p sqlite_error and @p os_error out-parameters
  * carry the raw error codes from the underlying subsystems.  Any of these
  * pointers may be @c NULL if the caller does not need the information.
- * @p posix_error receives the native OS error code: an @c errno value on
+ * @p os_error receives the native OS error code: an @c errno value on
  * POSIX systems, or a Win32 system error code (@c GetLastError()) on Windows.
  *
  * @par Quick start
@@ -208,7 +208,7 @@ typedef bool (*pcache_progress_fn)(double progress, void *user_data);
  *                              size immediately.
  * @param error                Receives the operation outcome; may be @c NULL.
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error          Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error             Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_create(const pcache_file_pair     *paths,
                    const pcache_configuration *config,
@@ -216,7 +216,7 @@ void pcache_create(const pcache_file_pair     *paths,
                    bool                        preallocate_datafile,
                    pcache_create_error        *error,
                    int                        *sqlite_error,
-                   int                        *posix_error);
+                   int                        *os_error);
 
 /**
  * @brief Open an existing volume.
@@ -224,10 +224,10 @@ void pcache_create(const pcache_file_pair     *paths,
  * @param paths             Paths to the database and data files.
  * @param error             Receives the operation outcome; may be @c NULL.
  * @param sqlite_error      Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error       Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error          Receives the OS error code on I/O failure; may be @c NULL.
  * @return Positive descriptor on success, or zero on failure.
  */
-pcache_handle pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite_error, int *posix_error);
+pcache_handle pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite_error, int *os_error);
 
 /**
  * @brief Close an open volume and release all associated resources.
@@ -238,9 +238,9 @@ pcache_handle pcache_open(const pcache_file_pair *paths, pcache_open_error *erro
  * @param handle       Descriptor returned by ::pcache_open.
  * @param error        Receives the operation outcome; may be @c NULL.
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error  Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error     Receives the OS error code on I/O failure; may be @c NULL.
  */
-void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *posix_error);
+void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *os_error);
 
 /* ──────────── Introspection ──────────── */
 
@@ -284,7 +284,7 @@ pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error 
  * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error         Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error            Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_put_page(pcache_handle     handle,
                      const void       *id,
@@ -293,7 +293,7 @@ void pcache_put_page(pcache_handle     handle,
                      bool              durable,
                      pcache_put_error *error,
                      int              *sqlite_error,
-                     int              *posix_error);
+                     int              *os_error);
 
 /**
  * @brief Store multiple pages in a single atomic operation.
@@ -315,7 +315,7 @@ void pcache_put_page(pcache_handle     handle,
  * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error         Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error            Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_put_pages(pcache_handle     handle,
                       size_t            count,
@@ -325,7 +325,7 @@ void pcache_put_pages(pcache_handle     handle,
                       bool              durable,
                       pcache_put_error *error,
                       int              *sqlite_error,
-                      int              *posix_error);
+                      int              *os_error);
 
 /**
  * @brief Store multiple pages, computing each identifier automatically from a template.
@@ -373,7 +373,7 @@ void pcache_put_pages(pcache_handle     handle,
  * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error         Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error            Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_put_pages_with_counter(pcache_handle     handle,
                                    size_t            count,
@@ -386,7 +386,7 @@ void pcache_put_pages_with_counter(pcache_handle     handle,
                                    bool              durable,
                                    pcache_put_error *error,
                                    int              *sqlite_error,
-                                   int              *posix_error);
+                                   int              *os_error);
 
 /**
  * @brief Retrieve the page identified by @p id.
@@ -396,14 +396,14 @@ void pcache_put_pages_with_counter(pcache_handle     handle,
  * @param page_buffer  Destination buffer; must be at least @c page_size bytes.
  * @param error        Receives the operation outcome; may be @c NULL.
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error  Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error     Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_get_page(pcache_handle     handle,
                      const void       *id,
                      void             *page_buffer,
                      pcache_get_error *error,
                      int              *sqlite_error,
-                     int              *posix_error);
+                     int              *os_error);
 
 /**
  * @brief Retrieve multiple pages whose identifiers are computed from a template.
@@ -427,7 +427,7 @@ void pcache_get_page(pcache_handle     handle,
  * @param pages_buffer Destination buffer; must be at least @c count * page_size bytes.
  * @param error        Receives the operation outcome; may be @c NULL.
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error  Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error     Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_get_pages_with_counter(pcache_handle     handle,
                                    size_t            count,
@@ -438,7 +438,7 @@ void pcache_get_pages_with_counter(pcache_handle     handle,
                                    void             *pages_buffer,
                                    pcache_get_error *error,
                                    int              *sqlite_error,
-                                   int              *posix_error);
+                                   int              *os_error);
 
 /**
  * @brief Retrieve multiple pages in a single atomic operation.
@@ -452,7 +452,7 @@ void pcache_get_pages_with_counter(pcache_handle     handle,
  * @param pages_buffer Destination buffer; must be @c count * page_size bytes.
  * @param error        Receives the operation outcome; may be @c NULL.
  * @param sqlite_error Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error  Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error     Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_get_pages(pcache_handle     handle,
                       size_t            count,
@@ -460,7 +460,7 @@ void pcache_get_pages(pcache_handle     handle,
                       void             *pages_buffer,
                       pcache_get_error *error,
                       int              *sqlite_error,
-                      int              *posix_error);
+                      int              *os_error);
 
 /**
  * @brief Retrieve all pages whose identifier falls within the closed interval [@p first, @p last].
@@ -519,7 +519,7 @@ void pcache_get_pages(pcache_handle     handle,
  * @param count_out        Receives the number of pages retrieved; may be @c NULL.
  * @param error            Receives the operation outcome; may be @c NULL.
  * @param sqlite_error     Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error      Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error         Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_get_pages_range(pcache_handle     handle,
                             const void       *first,
@@ -530,7 +530,7 @@ void pcache_get_pages_range(pcache_handle     handle,
                             uint32_t         *count_out,
                             pcache_get_error *error,
                             int              *sqlite_error,
-                            int              *posix_error);
+                            int              *os_error);
 
 /**
  * @brief Test whether a page identified by @p id exists in the volume.
@@ -630,7 +630,7 @@ void pcache_check_pages_range(pcache_handle       handle,
  * @param durable        If @c true, block until data is durable on disk.
  * @param error          Receives the operation outcome; may be @c NULL.
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error    Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error       Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_delete_page(pcache_handle        handle,
                         const void          *id,
@@ -638,7 +638,7 @@ void pcache_delete_page(pcache_handle        handle,
                         bool                 durable,
                         pcache_delete_error *error,
                         int                 *sqlite_error,
-                        int                 *posix_error);
+                        int                 *os_error);
 
 /**
  * @brief Delete multiple pages from the volume.
@@ -661,7 +661,7 @@ void pcache_delete_page(pcache_handle        handle,
  * @param durable        If @c true, block until data is durable on disk.
  * @param error          Receives the operation outcome; may be @c NULL.
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error    Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error       Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_delete_pages(pcache_handle        handle,
                          size_t               count,
@@ -670,7 +670,7 @@ void pcache_delete_pages(pcache_handle        handle,
                          bool                 durable,
                          pcache_delete_error *error,
                          int                 *sqlite_error,
-                         int                 *posix_error);
+                         int                 *os_error);
 
 /**
  * @brief Delete multiple pages whose identifiers are computed from a template.
@@ -695,7 +695,7 @@ void pcache_delete_pages(pcache_handle        handle,
  * @param durable        If @c true, block until data is durable on disk.
  * @param error          Receives the operation outcome; may be @c NULL.
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error    Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error       Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_delete_pages_with_counter(pcache_handle        handle,
                                       size_t               count,
@@ -707,7 +707,7 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
                                       bool                 durable,
                                       pcache_delete_error *error,
                                       int                 *sqlite_error,
-                                      int                 *posix_error);
+                                      int                 *os_error);
 
 /**
  * @brief Delete all pages whose identifier falls within the closed interval
@@ -730,7 +730,7 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
  * @param durable        If @c true, block until data is durable on disk.
  * @param error          Receives the operation outcome; may be @c NULL.
  * @param sqlite_error   Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error    Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error       Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_delete_pages_range(pcache_handle        handle,
                                const void          *first,
@@ -739,7 +739,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
                                bool                 durable,
                                pcache_delete_error *error,
                                int                 *sqlite_error,
-                               int                 *posix_error);
+                               int                 *os_error);
 
 /* ──────────── Maintenance ──────────── */
 
@@ -772,7 +772,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
  * @param durable             If @c true, block until data is durable on disk.
  * @param error               Receives the operation outcome; may be @c NULL.
  * @param sqlite_error        Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error         Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error            Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_defragment(pcache_handle            handle,
                        pcache_progress_fn       progress_callback,
@@ -781,7 +781,7 @@ void pcache_defragment(pcache_handle            handle,
                        bool                     durable,
                        pcache_defragment_error *error,
                        int                     *sqlite_error,
-                       int                     *posix_error);
+                       int                     *os_error);
 
 /**
  * @brief Adjust the maximum capacity of the volume.
@@ -800,14 +800,14 @@ void pcache_defragment(pcache_handle            handle,
  * @param durable       If @c true, block until data is durable on disk.
  * @param error         Receives the operation outcome; may be @c NULL.
  * @param sqlite_error  Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error   Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error      Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_set_max_pages(pcache_handle               handle,
                           uint32_t                    new_max_pages,
                           bool                        durable,
                           pcache_set_max_pages_error *error,
                           int                        *sqlite_error,
-                          int                        *posix_error);
+                          int                        *os_error);
 
 /**
  * @brief Preallocate space in an already-open volume.
@@ -821,7 +821,7 @@ void pcache_set_max_pages(pcache_handle               handle,
  * @param durable              If @c true, block until data is durable on disk.
  * @param error                Receives the operation outcome; may be @c NULL.
  * @param sqlite_error         Receives the SQLite error code on failure; may be @c NULL.
- * @param posix_error          Receives the OS error code on I/O failure; may be @c NULL.
+ * @param os_error             Receives the OS error code on I/O failure; may be @c NULL.
  */
 void pcache_preallocate(pcache_handle             handle,
                         bool                      preallocate_database,
@@ -829,7 +829,7 @@ void pcache_preallocate(pcache_handle             handle,
                         bool                      durable,
                         pcache_preallocate_error *error,
                         int                      *sqlite_error,
-                        int                      *posix_error);
+                        int                      *os_error);
 
 #ifdef __cplusplus
 }

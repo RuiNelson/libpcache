@@ -274,17 +274,17 @@ tstsuite("unit tests for pages_util helpers") {
     }
 
     tstcase("SET_3ERR in else-without-braces: success path must not write any error value") {
-        int err = 0, sqlite_err = 0, posix_err = 0;
+        int err = 0, sqlite_err = 0, os_err = 0;
         int rc = 100;
 
         if (rc == 100)
             (void)rc;
         else
-            SET_3ERR(&err, &sqlite_err, &posix_err, 999, rc, -1);
+            SET_3ERR(&err, &sqlite_err, &os_err, 999, rc, -1);
 
         tstcheck(err == 0, "err must stay 0 when if-branch is taken");
         tstcheck(sqlite_err == 0, "sqlite_err must stay 0 when if-branch is taken");
-        tstcheck(posix_err == 0, "posix_err must stay 0 when if-branch is taken");
+        tstcheck(os_err == 0, "os_err must stay 0 when if-branch is taken");
     }
 
     tstcase("SET_2ERR in else-without-braces: error path must set both values") {
@@ -306,13 +306,13 @@ tstsuite("unit tests for pages_util helpers") {
         pcache_volume volume = {0};
         volume.fd            = -1; /* invalid fd — fsync(-1) fails with a bad-handle error */
 
-        int posix_err  = 0;
+        int os_err     = 0;
         int sqlite_err = 0;
-        wait_for_synchronization(&volume, &posix_err, &sqlite_err);
+        wait_for_synchronization(&volume, &os_err, &sqlite_err);
 
-        tstcheck(posix_err != 0, "posix_err must be set on fsync failure");
-        tstcheck(posix_err == PLATFORM_ERROR_BAD_HANDLE, "real native error (bad handle) must be propagated");
-        tstcheck(posix_err != PLATFORM_ERROR_IO, "must not mask the native error with PLATFORM_ERROR_IO");
+        tstcheck(os_err != 0, "os_err must be set on fsync failure");
+        tstcheck(os_err == PLATFORM_ERROR_BAD_HANDLE, "real native error (bad handle) must be propagated");
+        tstcheck(os_err != PLATFORM_ERROR_IO, "must not mask the native error with PLATFORM_ERROR_IO");
     }
 
     tstcase("sync_if_durable reports failure even when error outputs are omitted") {

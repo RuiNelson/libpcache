@@ -41,8 +41,8 @@ static std::string pcache_error_string(int pcache_err) {
     return (it != pcache_errors.end()) ? it->second : "unknown";
 }
 
-bool print_error(int pcache_err, int sqlite_err, int posix_err) {
-    if (pcache_err == 0 && sqlite_err == 0 && posix_err == 0) {
+bool print_error(int pcache_err, int sqlite_err, int os_err) {
+    if (pcache_err == 0 && sqlite_err == 0 && os_err == 0) {
         return false;
     }
 
@@ -51,17 +51,17 @@ bool print_error(int pcache_err, int sqlite_err, int posix_err) {
 
         if (pcache_err == PCACHE_CODE_SQLITE_ERROR && sqlite_err != 0) {
             std::cerr << " (SQLite error: " << sqlite_err << ")";
-        } else if (pcache_err == PCACHE_CODE_IO_ERROR && posix_err != 0) {
-            std::cerr << " (POSIX error: " << posix_err << ": " << strerror(posix_err) << ")";
+        } else if (pcache_err == PCACHE_CODE_IO_ERROR && os_err != 0) {
+            std::cerr << " (OS error: " << os_err << ": " << strerror(os_err) << ")";
         }
     } else {
         if (sqlite_err != 0) {
             std::cerr << "SQLite error: " << sqlite_err;
         }
-        if (posix_err != 0) {
+        if (os_err != 0) {
             if (sqlite_err != 0)
                 std::cerr << " ";
-            std::cerr << "POSIX error: " << posix_err << ": " << strerror(posix_err);
+            std::cerr << "OS error: " << os_err << ": " << strerror(os_err);
         }
     }
 

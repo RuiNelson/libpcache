@@ -80,4 +80,4 @@ The following commands are available inside the REPL:
 
 Identifiers and page data are always read from files (no inline buffer input). The identifier file must be exactly `id_size` bytes; the page file must be exactly `page_size` bytes.
 
-Errors are reported in English. SQLite errors display the message from `sqlite3_errmsg()`. POSIX errors display the numeric error code.
+Errors are reported in English. SQLite errors display the message from `sqlite3_errmsg()`. OS errors display the numeric error code.

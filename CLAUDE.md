@@ -67,7 +67,7 @@ A volume consists of two files: a **data file** (fixed-size pages laid out seque
 
 - All public symbols are prefixed `pcache_` in snake_case.
 - Handles are `int` (`pcache_handle`); `0` means failure, positive means valid.
-- Functions never return errors via their return value. Each function takes a `pcache_<fn>_error *error` out-parameter, plus optional `int *sqlite_error` and `int *posix_error` pointers (any may be `NULL`).
+- Functions never return errors via their return value. Each function takes a `pcache_<fn>_error *error` out-parameter, plus optional `int *sqlite_error` and `int *os_error` pointers (any may be `NULL`).
 - Write operations take a `bool durable` parameter controlling whether `fsync` is awaited.
 - Error enum values are assigned explicitly to preserve binary compatibility.
 - Error enumerations live in `libpcache_errors.h`, which is transitively included by `libpcache.h`.

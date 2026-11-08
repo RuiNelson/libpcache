@@ -48,7 +48,7 @@ int main(void) {
     pcache_delete_error  del_err;
     pcache_close_error   close_err;
     int                  sqlite_err;
-    int                  posix_err;
+    int                  os_err;
 
     unsigned char        id_buf[36]                 = {0};
     unsigned char        write_buf[PAGE_SIZE_32KB]  = {0};
@@ -70,12 +70,12 @@ create:
     };
     pcache_create_error  create_err;
 
-    pcache_create(&paths, &config, false, false, &create_err, &sqlite_err, &posix_err);
+    pcache_create(&paths, &config, false, false, &create_err, &sqlite_err, &os_err);
     if (create_err != PCACHE_CREATE_OK) return 1;
 
 open:
     /* Open the volume. */
-    handle = pcache_open(&paths, &open_err, &sqlite_err, &posix_err);
+    handle = pcache_open(&paths, &open_err, &sqlite_err, &os_err);
     if (!handle) return 1;
 
 write:
@@ -83,26 +83,26 @@ write:
     memset(id_buf,   0xAB, sizeof(id_buf));
     memset(write_buf, 0x42, sizeof(write_buf));
     pcache_put_page(handle, id_buf, write_buf, /*fail_if_exists=*/false, /*durable=*/true,
-                    &put_err, &sqlite_err, &posix_err);
+                    &put_err, &sqlite_err, &os_err);
     if (put_err != PCACHE_PUT_OK) return 1;
 
 read:
     /* Read the page back using the same key. */
     pcache_get_page(handle, id_buf, read_buf,
-                    &get_err, &sqlite_err, &posix_err);
+                    &get_err, &sqlite_err, &os_err);
     if (get_err != PCACHE_GET_OK) return 1;
 
 delete:
     /* Delete the page. wipe_data_file=false keeps the bytes on disk —
      * only the index entry is removed. */
     pcache_delete_page(handle, id_buf, /*wipe_data_file=*/false, /*durable=*/true,
-                       &del_err, &sqlite_err, &posix_err);
+                       &del_err, &sqlite_err, &os_err);
     if (del_err != PCACHE_DELETE_OK) return 1;
 
 close:
     /* Close the volume. */
     pcache_close(handle,
-                 &close_err, &sqlite_err, &posix_err);
+                 &close_err, &sqlite_err, &os_err);
 
     return 0;
 }

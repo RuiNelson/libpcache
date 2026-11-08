@@ -9,8 +9,8 @@ void pcache_create(const pcache_file_pair     *paths,
                    bool                        preallocate_datafile,
                    pcache_create_error        *error,
                    int                        *sqlite_error,
-                   int                        *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+                   int                        *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (!paths || !paths->database_path || !paths->data_path || !config || config->page_size == 0 ||
         config->max_pages == 0 || config->id_size == 0) {
@@ -21,7 +21,7 @@ void pcache_create(const pcache_file_pair     *paths,
     int db_fd = platform_open_rw(paths->database_path, true);
     if (db_fd < 0) {
         int open_error = platform_last_error();
-        SET_ERR(posix_error, open_error);
+        SET_ERR(os_error, open_error);
         if (open_error == PLATFORM_ERROR_FILE_EXISTS) {
             SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
         } else {
@@ -33,7 +33,7 @@ void pcache_create(const pcache_file_pair     *paths,
     int data_fd = platform_open_rw(paths->data_path, true);
     if (data_fd < 0) {
         int open_error = platform_last_error();
-        SET_ERR(posix_error, open_error);
+        SET_ERR(os_error, open_error);
         if (open_error == PLATFORM_ERROR_FILE_EXISTS) {
             SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
         } else {
@@ -121,7 +121,7 @@ void pcache_create(const pcache_file_pair     *paths,
     if (preallocate_datafile) {
         platform_off_t total = (platform_off_t)config->max_pages * config->page_size;
         if (platform_ftruncate(data_fd, total) != 0) {
-            SET_ERR(posix_error, platform_last_error());
+            SET_ERR(os_error, platform_last_error());
             SET_ERR(error, PCACHE_CREATE_IO_ERROR);
             goto fail;
         }
@@ -138,9 +138,8 @@ fail:
     platform_unlink(paths->database_path);
 }
 
-pcache_handle
-pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite_error, int *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+pcache_handle pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite_error, int *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     if (!paths || !paths->database_path || !paths->data_path) {
         SET_ERR(error, PCACHE_OPEN_NOT_FOUND);
@@ -148,7 +147,7 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
     }
 
     if (!platform_file_exists(paths->database_path) || !platform_file_exists(paths->data_path)) {
-        SET_ERR(posix_error, platform_last_error());
+        SET_ERR(os_error, platform_last_error());
         SET_ERR(error, PCACHE_OPEN_NOT_FOUND);
         return 0;
     }
@@ -174,7 +173,7 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
 
     volume->fd = platform_open_rw(paths->data_path, false);
     if (volume->fd < 0) {
-        SET_ERR(posix_error, platform_last_error());
+        SET_ERR(os_error, platform_last_error());
         SET_ERR(error, PCACHE_OPEN_IO_ERROR);
         goto fail_locked;
     }
@@ -388,8 +387,8 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
                 }
 
                 int compact_sqlite_rc = 0;
-                int compact_posix_rc  = 0;
-                switch (fifo_compact_holes(volume, run_end, &compact_sqlite_rc, &compact_posix_rc)) {
+                int compact_os_rc     = 0;
+                switch (fifo_compact_holes(volume, run_end, &compact_sqlite_rc, &compact_os_rc)) {
                     case FIFO_COMPACT_OK:
                         break;
                     case FIFO_COMPACT_SQLITE_ERROR:
@@ -397,7 +396,7 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
                         SET_ERR(error, PCACHE_OPEN_SQLITE_ERROR);
                         goto fail_locked;
                     case FIFO_COMPACT_IO_ERROR:
-                        SET_ERR(posix_error, compact_posix_rc);
+                        SET_ERR(os_error, compact_os_rc);
                         SET_ERR(error, PCACHE_OPEN_IO_ERROR);
                         goto fail_locked;
                     case FIFO_COMPACT_OUT_OF_MEMORY:
@@ -450,8 +449,8 @@ fail_locked:
     return 0;
 }
 
-void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *posix_error) {
-    ZERO_3ERR(error, sqlite_error, posix_error);
+void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_error, int *os_error) {
+    ZERO_3ERR(error, sqlite_error, os_error);
 
     pcache_volume *volume = volume_from_handle_for_close(handle);
     if (!volume) {
@@ -499,12 +498,12 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
 
     if (volume->fd >= 0) {
         if (platform_fsync(volume->fd) != 0) {
-            SET_ERR(posix_error, platform_last_error());
+            SET_ERR(os_error, platform_last_error());
             if (error && *error == PCACHE_CLOSE_OK)
                 SET_ERR(error, PCACHE_CLOSE_IO_ERROR);
         }
         if (platform_close(volume->fd) != 0) {
-            SET_ERR(posix_error, platform_last_error());
+            SET_ERR(os_error, platform_last_error());
             if (error && *error == PCACHE_CLOSE_OK)
                 SET_ERR(error, PCACHE_CLOSE_IO_ERROR);
         }
