@@ -32,6 +32,31 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure
 
+  darwin:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew install sqlite pkgconf
+          # Homebrew's sqlite is keg-only; expose its .pc file to pkg-config.
+          echo "PKG_CONFIG_PATH=$(brew --prefix sqlite)/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '4.x'
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} -j "$(sysctl -n hw.ncpu)"
+
+      - name: Test
+        run: ctest --test-dir build -C ${{ env.BUILD_TYPE }} --output-on-failure
+
   windows:
     runs-on: windows-latest
 
