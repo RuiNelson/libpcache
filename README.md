@@ -5,7 +5,6 @@
 [![License: MIT](https://img.shields.io/github/license/RuiNelson/libpcache)](LICENSE)
 ![Language](https://img.shields.io/badge/language-C17-blue?logo=c)
 ![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)
-![SQLite](https://img.shields.io/badge/index-SQLite-003B57?logo=sqlite)
 
 Fast, reliable, persistent storage for fixed-size pages — identified by any binary key you choose.
 
