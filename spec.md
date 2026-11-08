@@ -668,7 +668,7 @@ void pcache_preallocate(
 ## Language and Toolchain
 
 - **Language standard:** C17 (ISO/IEC 9899:2018).
-- **Compiler:** clang.
+- **Compiler:** clang (macOS, Linux) or MSVC (Windows).
 - **Build system:** CMake.
 
 ## Dependencies
@@ -679,6 +679,14 @@ void pcache_preallocate(
 ## Supported Platforms
 
 - macOS and Linux.
+- Windows (x64, MSVC). On Windows:
+  - Paths in `pcache_file_pair` are interpreted as UTF-8, matching SQLite's own path encoding.
+  - The data file is opened in binary mode and shared for reading, writing and deletion, so it behaves like a POSIX file descriptor.
+  - Positional reads and writes use `ReadFile`/`WriteFile` with an explicit offset; `fsync` is implemented with `FlushFileBuffers`; truncation and extension use `SetFileInformationByHandle` (`FileEndOfFileInfo`).
+  - Values reported through `posix_error` are native Win32 system error codes (as returned by `GetLastError()`), not `errno` values; no translation is performed. Where a POSIX build reports `EIO` for a failure that has no underlying system error (for example a short read past the end of the data file), Windows reports `ERROR_IO_DEVICE`.
+  - The shared library is built as `pcache.dll` with all of its symbols exported.
+
+Platform-specific system calls are confined to an internal portability layer (`src/platform.c`); the rest of the implementation is platform-independent.
 
 Supports systems where an int is 32 bits, 64 bits or more.
 
@@ -690,7 +698,6 @@ Detailed documentation: [spec_repl.md](spec_repl.md)
 
 ## Future Work
 
-- Windows support.
 - Additional replacement policies, notably those based on popularity counters (*least frequently used*).
 
 ## License

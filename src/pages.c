@@ -3,11 +3,8 @@
 #include "macros.h"
 #include "pages_util.h"
 
-#include <errno.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <xxhash.h>
 
@@ -302,11 +299,11 @@ static void _pcache_put_pages(pcache_volume    *volume,
             restore_capture_ok = false;
             break;
         }
-        restores[idx].rowid   = target_rowids[idx];
-        off_t   byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
-        ssize_t restore_bytes = pread(volume->fd, restores[idx].page_data, page_size, byte_offset);
-        if (restore_bytes != (ssize_t)page_size) {
-            SET_ERR(posix_error, restore_bytes < 0 ? errno : EIO);
+        restores[idx].rowid            = target_rowids[idx];
+        platform_off_t   byte_offset   = rowid_to_offset(target_rowids[idx], page_size);
+        platform_ssize_t restore_bytes = platform_pread(volume->fd, restores[idx].page_data, page_size, byte_offset);
+        if (restore_bytes != (platform_ssize_t)page_size) {
+            SET_ERR(posix_error, restore_bytes < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             restore_capture_ok = false;
             break;
@@ -388,11 +385,11 @@ static void _pcache_put_pages(pcache_volume    *volume,
      * references the partially-written bytes — the slot is again NULL/absent
      * and the orphaned bytes are unreachable. */
     for (size_t i = 0; i < count; i++) {
-        const void *page        = (const uint8_t *)pages_data + i * page_size;
-        off_t       byte_offset = rowid_to_offset(target_rowids[i], page_size);
-        ssize_t     written     = put_pwrite(volume, page, page_size, byte_offset);
-        if (written != (ssize_t)page_size) {
-            SET_ERR(posix_error, written < 0 ? errno : EIO);
+        const void      *page        = (const uint8_t *)pages_data + i * page_size;
+        platform_off_t   byte_offset = rowid_to_offset(target_rowids[i], page_size);
+        platform_ssize_t written     = put_pwrite(volume, page, page_size, byte_offset);
+        if (written != (platform_ssize_t)page_size) {
+            SET_ERR(posix_error, written < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
             SET_ERR(error, PCACHE_PUT_IO_ERROR);
             db_exec(volume->db, "ROLLBACK");
             restore_pages(volume, restores, count, posix_error);
@@ -454,7 +451,7 @@ void pcache_put_pages(pcache_handle     handle,
     }
 
     _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, posix_error, false);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_put_pages_with_counter(pcache_handle     handle,
@@ -496,11 +493,11 @@ void pcache_put_pages_with_counter(pcache_handle     handle,
 
     _pcache_put_pages(volume, count, ids, pages_data, fail_if_exists, durable, error, sqlite_error, posix_error, true);
     free(ids);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return;
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 /* Caller must hold volume->mutex for the entire call. */
@@ -515,7 +512,7 @@ static void _pcache_get_pages(pcache_volume    *volume,
      * Key design:
      *   - Batch read: retrieves multiple pages in a single lock acquisition.
      *   - Two-phase lookup: first finds ROWID via index (SQLite), then reads data
-     *     from the flat data file using pread().
+     *     from the flat data file using platform_pread().
      *   - Fail-fast: stops on first error, leaving remaining buffer untouched.
      *   - No transaction needed: reads are lock-free after handle validation.
      */
@@ -535,12 +532,12 @@ static void _pcache_get_pages(pcache_volume    *volume,
             all_ok = false;
         } else {
             /* Calculate byte offset: ROWID 1 maps to offset 0 */
-            void   *buffer      = (uint8_t *)pages_buffer + idx * volume->config.page_size;
-            off_t   byte_offset = rowid_to_offset(rowid, volume->config.page_size);
-            ssize_t bytes_read  = pread(volume->fd, buffer, volume->config.page_size, byte_offset);
-            if (bytes_read != (ssize_t)volume->config.page_size) {
-                /* A short read (EOF) does not set errno; report EIO explicitly. */
-                SET_ERR(posix_error, bytes_read < 0 ? errno : EIO);
+            void            *buffer      = (uint8_t *)pages_buffer + idx * volume->config.page_size;
+            platform_off_t   byte_offset = rowid_to_offset(rowid, volume->config.page_size);
+            platform_ssize_t bytes_read  = platform_pread(volume->fd, buffer, volume->config.page_size, byte_offset);
+            if (bytes_read != (platform_ssize_t)volume->config.page_size) {
+                /* A short read (EOF) does not set errno; report PLATFORM_ERROR_IO explicitly. */
+                SET_ERR(posix_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 all_ok = false;
             }
@@ -567,7 +564,7 @@ void pcache_get_pages(pcache_handle     handle,
     }
 
     _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, posix_error);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_get_pages_with_counter(pcache_handle     handle,
@@ -607,11 +604,11 @@ void pcache_get_pages_with_counter(pcache_handle     handle,
 
     _pcache_get_pages(volume, count, ids, pages_buffer, error, sqlite_error, posix_error);
     free(ids);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return;
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 bool pcache_check_page(pcache_handle handle, const void *id, pcache_check_error *error, int *sqlite_error) {
@@ -655,7 +652,7 @@ void pcache_check_pages(
     }
 
     _pcache_check_pages(volume, count, ids, results, error, sqlite_error);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_check_pages_with_counter(pcache_handle       handle,
@@ -694,11 +691,11 @@ void pcache_check_pages_with_counter(pcache_handle       handle,
 
     _pcache_check_pages(volume, count, ids, results, error, sqlite_error);
     free(ids);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return;
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_delete_page(pcache_handle        handle,
@@ -812,7 +809,7 @@ static void _pcache_delete_pages(pcache_volume       *volume,
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
-                    SET_ERR(posix_error, errno);
+                    SET_ERR(posix_error, platform_last_error());
                     SET_ERR(error, PCACHE_DELETE_IO_ERROR);
                 }
                 break;
@@ -864,7 +861,7 @@ void pcache_delete_pages(pcache_handle        handle,
     }
 
     _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, posix_error);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_delete_pages_with_counter(pcache_handle        handle,
@@ -905,11 +902,11 @@ void pcache_delete_pages_with_counter(pcache_handle        handle,
 
     _pcache_delete_pages(volume, count, ids, wipe_data_file, durable, error, sqlite_error, posix_error);
     free(ids);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return;
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_delete_pages_range(pcache_handle        handle,
@@ -1076,7 +1073,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
                 if (!volume->wipe_buffer) {
                     SET_ERR(error, PCACHE_DELETE_OUT_OF_MEMORY);
                 } else {
-                    SET_ERR(posix_error, errno);
+                    SET_ERR(posix_error, platform_last_error());
                     SET_ERR(error, PCACHE_DELETE_IO_ERROR);
                 }
                 break;
@@ -1099,7 +1096,7 @@ void pcache_delete_pages_range(pcache_handle        handle,
     }
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_check_pages_range(pcache_handle       handle,
@@ -1147,7 +1144,7 @@ void pcache_check_pages_range(pcache_handle       handle,
     }
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 void pcache_get_pages_range(pcache_handle     handle,
@@ -1225,13 +1222,13 @@ void pcache_get_pages_range(pcache_handle     handle,
 
         uint32_t idx = 0;
         while ((rc = sqlite3_step(select_stmt)) == SQLITE_ROW) {
-            int64_t     rowid      = sqlite3_column_int64(select_stmt, 0);
-            const void *id_bytes   = sqlite3_column_blob(select_stmt, 1);
-            void       *page_dest  = (uint8_t *)pages_buffer + (size_t)idx * page_size;
-            off_t       offset     = rowid_to_offset(rowid, page_size);
-            ssize_t     bytes_read = pread(volume->fd, page_dest, page_size, offset);
-            if (bytes_read != (ssize_t)page_size) {
-                SET_ERR(posix_error, bytes_read < 0 ? errno : EIO);
+            int64_t          rowid      = sqlite3_column_int64(select_stmt, 0);
+            const void      *id_bytes   = sqlite3_column_blob(select_stmt, 1);
+            void            *page_dest  = (uint8_t *)pages_buffer + (size_t)idx * page_size;
+            platform_off_t   offset     = rowid_to_offset(rowid, page_size);
+            platform_ssize_t bytes_read = platform_pread(volume->fd, page_dest, page_size, offset);
+            if (bytes_read != (platform_ssize_t)page_size) {
+                SET_ERR(posix_error, bytes_read < 0 ? platform_last_error() : PLATFORM_ERROR_IO);
                 SET_ERR(error, PCACHE_GET_IO_ERROR);
                 sqlite3_finalize(select_stmt);
                 goto unlock;
@@ -1249,5 +1246,5 @@ void pcache_get_pages_range(pcache_handle     handle,
     }
 
 unlock:
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }

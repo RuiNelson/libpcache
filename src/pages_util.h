@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <sys/types.h>
 
 /** @brief Saved page state used to roll back a partial write failure. */
 typedef struct {
@@ -24,7 +23,7 @@ void free_page_restores(page_restore *restores, size_t count);
 bool restore_pages(pcache_volume *volume, page_restore *restores, size_t count, int *posix_error);
 
 /** @brief Write a single page to the data file at the given byte offset using pwrite. */
-ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, off_t byte_offset);
+platform_ssize_t put_pwrite(pcache_volume *volume, const void *page, size_t page_size, platform_off_t byte_offset);
 
 typedef enum {
     BATCH_DUP_NONE,          /**< No duplicate found. */

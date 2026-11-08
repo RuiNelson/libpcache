@@ -2,12 +2,11 @@
 
 #include "common.h"
 #include "libpcache.h"
+#include "platform.h"
 #include "tst.h"
 
-#include <errno.h>
 #include <stdint.h>
 #include <string.h>
-#include <unistd.h>
 
 #define ID_SIZE   16
 #define PAGE_SIZE 128
@@ -166,13 +165,13 @@ tstsuite("edge cases") {
         pcache_test_fail_sync(true);
         pcache_put_page(handle, id, page, false, true, NULL, NULL, &posix_error);
         pcache_test_fail_sync(false);
-        tstcheck(posix_error == EIO, "put synchronization was attempted despite error == NULL");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "put synchronization was attempted despite error == NULL");
 
         posix_error = 0;
         pcache_test_fail_sync(true);
         pcache_delete_page(handle, id, false, true, NULL, NULL, &posix_error);
         pcache_test_fail_sync(false);
-        tstcheck(posix_error == EIO, "delete synchronization was attempted despite error == NULL");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "delete synchronization was attempted despite error == NULL");
 
         make_id_with_index(id, ID_SIZE, 701);
         make_page_with_index(page, PAGE_SIZE, 701);
@@ -182,13 +181,13 @@ tstsuite("edge cases") {
         pcache_test_fail_sync(true);
         pcache_delete_pages_range(handle, id, id, false, true, NULL, NULL, &posix_error);
         pcache_test_fail_sync(false);
-        tstcheck(posix_error == EIO, "range-delete synchronization was attempted despite error == NULL");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "range-delete synchronization was attempted despite error == NULL");
 
         posix_error = 0;
         pcache_test_fail_sync(true);
         pcache_defragment(handle, NULL, NULL, false, true, NULL, NULL, &posix_error);
         pcache_test_fail_sync(false);
-        tstcheck(posix_error == EIO, "defragment synchronization was attempted despite error == NULL");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "defragment synchronization was attempted despite error == NULL");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);
@@ -316,16 +315,16 @@ tstsuite("edge cases") {
 
         /* Simulate index/data divergence (e.g. crash after index commit but
          * before the page bytes reached the file): drop the page bytes. */
-        tstcheck(truncate(paths.data_path, 0) == 0, "truncate data file");
+        tstcheck(test_truncate(paths.data_path, 0) == 0, "truncate data file");
 
-        /* errno is 0 here; a short read (EOF) does not set it, so the library
-         * must report EIO explicitly rather than echoing a success/stale errno. */
-        errno                        = 0;
+        /* the platform error is 0 here; a short read (EOF) does not set it, so the library
+         * must report PLATFORM_ERROR_IO explicitly rather than echoing a success/stale error. */
+        platform_set_last_error(0);
         pcache_get_error get_error   = (pcache_get_error)-1;
         int              posix_error = -1;
         pcache_get_page(handle, id, page_out, &get_error, NULL, &posix_error);
         tstcheck(get_error == PCACHE_GET_IO_ERROR, "short read -> IO_ERROR");
-        tstcheck(posix_error == EIO, "short read reports EIO, not a 0/stale errno");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "short read reports EIO, not a 0/stale errno");
 
         /* Same guarantee on the range read path. */
         unsigned char first[ID_SIZE], last[ID_SIZE];
@@ -333,12 +332,12 @@ tstsuite("edge cases") {
         make_id_with_index(last, ID_SIZE, 2);
         unsigned char out_ids[ID_SIZE];
         uint32_t      got = 0;
-        errno             = 0;
-        get_error         = (pcache_get_error)-1;
-        posix_error       = -1;
+        platform_set_last_error(0);
+        get_error   = (pcache_get_error)-1;
+        posix_error = -1;
         pcache_get_pages_range(handle, first, last, out_ids, page_out, 1, &got, &get_error, NULL, &posix_error);
         tstcheck(get_error == PCACHE_GET_IO_ERROR, "range short read -> IO_ERROR");
-        tstcheck(posix_error == EIO, "range short read reports EIO, not a 0/stale errno");
+        tstcheck(posix_error == PLATFORM_ERROR_IO, "range short read reports EIO, not a 0/stale errno");
 
         pcache_close(handle, NULL, NULL, NULL);
         test_paths_cleanup(&paths);

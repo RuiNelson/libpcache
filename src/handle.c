@@ -6,14 +6,14 @@
  * moved-mutex UB that a flat realloc() would cause. */
 #define SEGMENT_SIZE 16
 
-static pcache_volume **s_segments;
-static size_t          s_segment_count;
-static size_t          s_vol_count;
-static pthread_mutex_t s_table_lock;
-static pthread_once_t  s_once = PTHREAD_ONCE_INIT;
+static pcache_volume    **s_segments;
+static size_t             s_segment_count;
+static size_t             s_vol_count;
+static platform_mutex     s_table_lock;
+static platform_once_flag s_once = PLATFORM_ONCE_INIT;
 
 static void global_init(void) {
-    pthread_mutex_init(&s_table_lock, NULL);
+    platform_mutex_init(&s_table_lock);
 }
 
 static pcache_volume *slot_at(size_t idx) {
@@ -26,12 +26,12 @@ static bool grow_table(void) {
         return false;
 
     for (size_t i = 0; i < SEGMENT_SIZE; i++)
-        pthread_mutex_init(&seg[i].mutex, NULL);
+        platform_mutex_init(&seg[i].mutex);
 
     pcache_volume **new_segs = realloc(s_segments, (s_segment_count + 1) * sizeof *new_segs);
     if (!new_segs) {
         for (size_t i = 0; i < SEGMENT_SIZE; i++)
-            pthread_mutex_destroy(&seg[i].mutex);
+            platform_mutex_destroy(&seg[i].mutex);
         free(seg);
         return false;
     }
@@ -43,8 +43,8 @@ static bool grow_table(void) {
 }
 
 pcache_volume *allocate_slot(void) {
-    pthread_once(&s_once, global_init);
-    pthread_mutex_lock(&s_table_lock);
+    platform_once(&s_once, global_init);
+    platform_mutex_lock(&s_table_lock);
 
     pcache_volume *v = NULL;
     for (size_t i = 0; i < s_vol_count && !v; i++) {
@@ -57,7 +57,7 @@ pcache_volume *allocate_slot(void) {
 
     if (!v) {
         if (s_vol_count >= s_segment_count * SEGMENT_SIZE && !grow_table()) {
-            pthread_mutex_unlock(&s_table_lock);
+            platform_mutex_unlock(&s_table_lock);
             return NULL;
         }
         v              = slot_at(s_vol_count);
@@ -66,7 +66,7 @@ pcache_volume *allocate_slot(void) {
         s_vol_count++;
     }
 
-    pthread_mutex_unlock(&s_table_lock);
+    platform_mutex_unlock(&s_table_lock);
     return v;
 }
 
@@ -74,8 +74,8 @@ void release_slot(pcache_volume *volume) {
     if (!volume)
         return;
 
-    pthread_once(&s_once, global_init);
-    pthread_mutex_lock(&s_table_lock);
+    platform_once(&s_once, global_init);
+    platform_mutex_lock(&s_table_lock);
 
     bool valid = false;
     for (size_t seg = 0; seg < s_segment_count && !valid; seg++) {
@@ -85,30 +85,30 @@ void release_slot(pcache_volume *volume) {
     if (valid)
         volume->in_use = false;
 
-    pthread_mutex_unlock(&s_table_lock);
+    platform_mutex_unlock(&s_table_lock);
 }
 
 pcache_volume *volume_from_handle(pcache_handle handle) {
     if (handle <= 0)
         return NULL;
 
-    pthread_once(&s_once, global_init);
-    pthread_mutex_lock(&s_table_lock);
+    platform_once(&s_once, global_init);
+    platform_mutex_lock(&s_table_lock);
 
     size_t idx = (size_t)(handle - 1);
     if (idx >= s_vol_count) {
-        pthread_mutex_unlock(&s_table_lock);
+        platform_mutex_unlock(&s_table_lock);
         return NULL;
     }
 
     pcache_volume *v = slot_at(idx);
     if (!v->in_use) {
-        pthread_mutex_unlock(&s_table_lock);
+        platform_mutex_unlock(&s_table_lock);
         return NULL;
     }
 
-    pthread_mutex_lock(&v->mutex);
-    pthread_mutex_unlock(&s_table_lock);
+    platform_mutex_lock(&v->mutex);
+    platform_mutex_unlock(&s_table_lock);
     return v;
 }
 
@@ -116,24 +116,24 @@ pcache_volume *volume_from_handle_for_close(pcache_handle handle) {
     if (handle <= 0)
         return NULL;
 
-    pthread_once(&s_once, global_init);
-    pthread_mutex_lock(&s_table_lock);
+    platform_once(&s_once, global_init);
+    platform_mutex_lock(&s_table_lock);
 
     size_t idx = (size_t)(handle - 1);
     if (idx >= s_vol_count) {
-        pthread_mutex_unlock(&s_table_lock);
+        platform_mutex_unlock(&s_table_lock);
         return NULL;
     }
 
     pcache_volume *volume = slot_at(idx);
     if (!volume->in_use) {
-        pthread_mutex_unlock(&s_table_lock);
+        platform_mutex_unlock(&s_table_lock);
         return NULL;
     }
 
     volume->in_use = false;
-    pthread_mutex_lock(&volume->mutex);
-    pthread_mutex_unlock(&s_table_lock);
+    platform_mutex_lock(&volume->mutex);
+    platform_mutex_unlock(&s_table_lock);
     return volume;
 }
 

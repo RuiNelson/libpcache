@@ -3,12 +3,6 @@
 #include "macros.h"
 #include "pages_util.h"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
 void pcache_create(const pcache_file_pair     *paths,
                    const pcache_configuration *config,
                    bool                        preallocate_database,
@@ -24,10 +18,11 @@ void pcache_create(const pcache_file_pair     *paths,
         return;
     }
 
-    int db_fd = open(paths->database_path, O_RDWR | O_CREAT | O_EXCL, 0644);
+    int db_fd = platform_open_rw(paths->database_path, true);
     if (db_fd < 0) {
-        SET_ERR(posix_error, errno);
-        if (errno == EEXIST) {
+        int open_error = platform_last_error();
+        SET_ERR(posix_error, open_error);
+        if (open_error == PLATFORM_ERROR_FILE_EXISTS) {
             SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
         } else {
             SET_ERR(error, PCACHE_CREATE_IO_ERROR);
@@ -35,33 +30,33 @@ void pcache_create(const pcache_file_pair     *paths,
         return;
     }
 
-    int data_fd = open(paths->data_path, O_RDWR | O_CREAT | O_EXCL, 0644);
+    int data_fd = platform_open_rw(paths->data_path, true);
     if (data_fd < 0) {
-        SET_ERR(posix_error, errno);
-
-        if (errno == EEXIST) {
+        int open_error = platform_last_error();
+        SET_ERR(posix_error, open_error);
+        if (open_error == PLATFORM_ERROR_FILE_EXISTS) {
             SET_ERR(error, PCACHE_CREATE_FILE_EXISTS);
         } else {
             SET_ERR(error, PCACHE_CREATE_IO_ERROR);
         }
 
-        close(db_fd);
-        unlink(paths->database_path);
+        platform_close(db_fd);
+        platform_unlink(paths->database_path);
         return;
     }
 
     /* The db_fd was used solely for the O_EXCL existence check; SQLite will
      * open the file with its own fd.  Close now to avoid a descriptor leak. */
-    close(db_fd);
+    platform_close(db_fd);
 
     sqlite3 *db        = NULL;
     int      sqlite_rc = sqlite3_open_v2(paths->database_path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     if (sqlite_rc != SQLITE_OK) {
         SET_ERR(sqlite_error, sqlite_rc);
         SET_ERR(error, PCACHE_CREATE_SQLITE_ERROR);
-        close(data_fd);
-        unlink(paths->data_path);
-        unlink(paths->database_path);
+        platform_close(data_fd);
+        platform_unlink(paths->data_path);
+        platform_unlink(paths->database_path);
         sqlite3_close(db);
         return;
     }
@@ -124,23 +119,23 @@ void pcache_create(const pcache_file_pair     *paths,
 
     /* ── Preallocate data file ── */
     if (preallocate_datafile) {
-        off_t total = (off_t)config->max_pages * config->page_size;
-        if (ftruncate(data_fd, total) != 0) {
-            SET_ERR(posix_error, errno);
+        platform_off_t total = (platform_off_t)config->max_pages * config->page_size;
+        if (platform_ftruncate(data_fd, total) != 0) {
+            SET_ERR(posix_error, platform_last_error());
             SET_ERR(error, PCACHE_CREATE_IO_ERROR);
             goto fail;
         }
     }
 
     sqlite3_close(db);
-    close(data_fd);
+    platform_close(data_fd);
     return;
 
 fail:
     sqlite3_close(db);
-    close(data_fd);
-    unlink(paths->data_path);
-    unlink(paths->database_path);
+    platform_close(data_fd);
+    platform_unlink(paths->data_path);
+    platform_unlink(paths->database_path);
 }
 
 pcache_handle
@@ -152,8 +147,8 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
         return 0;
     }
 
-    if (access(paths->database_path, F_OK) != 0 || access(paths->data_path, F_OK) != 0) {
-        SET_ERR(posix_error, errno);
+    if (!platform_file_exists(paths->database_path) || !platform_file_exists(paths->data_path)) {
+        SET_ERR(posix_error, platform_last_error());
         SET_ERR(error, PCACHE_OPEN_NOT_FOUND);
         return 0;
     }
@@ -164,7 +159,7 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
         return 0;
     }
 
-    pthread_mutex_lock(&volume->mutex);
+    platform_mutex_lock(&volume->mutex);
 
     volume->row_count                  = 0;
     volume->fd                         = -1;
@@ -177,9 +172,9 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
     volume->statement_find_fifo_cursor = NULL;
     volume->wipe_buffer                = NULL;
 
-    volume->fd = open(paths->data_path, O_RDWR);
+    volume->fd = platform_open_rw(paths->data_path, false);
     if (volume->fd < 0) {
-        SET_ERR(posix_error, errno);
+        SET_ERR(posix_error, platform_last_error());
         SET_ERR(error, PCACHE_OPEN_IO_ERROR);
         goto fail_locked;
     }
@@ -336,10 +331,10 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
             if (volume->row_count == volume->config.max_pages) {
                 sqlite3_stmt *runs_stmt  = NULL;
                 int64_t       run_starts = 0;
-                int runs_rc = sqlite3_prepare_v2(volume->db,
+                int           runs_rc    = sqlite3_prepare_v2(volume->db,
                                                  "SELECT COUNT(*) FROM pages p WHERE p.id_hash IS NULL AND EXISTS ("
-                                                 "  SELECT 1 FROM pages q WHERE q.rowid = CASE WHEN p.rowid = 1 THEN ?1"
-                                                 "  ELSE p.rowid - 1 END AND q.id_hash IS NOT NULL)",
+                                                              "  SELECT 1 FROM pages q WHERE q.rowid = CASE WHEN p.rowid = 1 THEN ?1"
+                                                              "  ELSE p.rowid - 1 END AND q.id_hash IS NOT NULL)",
                                                  -1,
                                                  &runs_stmt,
                                                  NULL);
@@ -414,7 +409,7 @@ pcache_open(const pcache_file_pair *paths, pcache_open_error *error, int *sqlite
     }
 
     pcache_handle h = handle_of(volume);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return h;
 
 fail_locked:
@@ -449,9 +444,9 @@ fail_locked:
     if (volume->db)
         sqlite3_close(volume->db);
     if (volume->fd >= 0)
-        close(volume->fd);
+        platform_close(volume->fd);
     release_slot(volume);
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return 0;
 }
 
@@ -503,20 +498,20 @@ void pcache_close(pcache_handle handle, pcache_close_error *error, int *sqlite_e
     }
 
     if (volume->fd >= 0) {
-        if (fsync(volume->fd) != 0) {
-            SET_ERR(posix_error, errno);
+        if (platform_fsync(volume->fd) != 0) {
+            SET_ERR(posix_error, platform_last_error());
             if (error && *error == PCACHE_CLOSE_OK)
                 SET_ERR(error, PCACHE_CLOSE_IO_ERROR);
         }
-        if (close(volume->fd) != 0) {
-            SET_ERR(posix_error, errno);
+        if (platform_close(volume->fd) != 0) {
+            SET_ERR(posix_error, platform_last_error());
             if (error && *error == PCACHE_CLOSE_OK)
                 SET_ERR(error, PCACHE_CLOSE_IO_ERROR);
         }
         volume->fd = -1;
     }
 
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
 }
 
 pcache_configuration pcache_inspect_configuration(pcache_handle handle, pcache_inspect_configuration_error *error) {
@@ -530,7 +525,7 @@ pcache_configuration pcache_inspect_configuration(pcache_handle handle, pcache_i
     }
 
     cfg = volume->config;
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return cfg;
 }
 
@@ -550,7 +545,7 @@ pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error 
         sqlite3_prepare_v2(volume->db, "SELECT COUNT(*) FROM pages WHERE id_hash IS NOT NULL", -1, &statement, NULL);
     if (sqlite_rc != SQLITE_OK) {
         SET_2ERR(error, sqlite_error, PCACHE_INSPECT_PAGE_COUNT_SQLITE_ERROR, sqlite_rc);
-        pthread_mutex_unlock(&volume->mutex);
+        platform_mutex_unlock(&volume->mutex);
         return counts;
     }
 
@@ -558,7 +553,7 @@ pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error 
     if (sqlite_rc != SQLITE_ROW) {
         SET_2ERR(error, sqlite_error, PCACHE_INSPECT_PAGE_COUNT_SQLITE_ERROR, sqlite_rc);
         sqlite3_finalize(statement);
-        pthread_mutex_unlock(&volume->mutex);
+        platform_mutex_unlock(&volume->mutex);
         return counts;
     }
 
@@ -566,6 +561,6 @@ pcache_inspect_page_count(pcache_handle handle, pcache_inspect_page_count_error 
     counts.free = volume->config.max_pages - counts.used;
     sqlite3_finalize(statement);
 
-    pthread_mutex_unlock(&volume->mutex);
+    platform_mutex_unlock(&volume->mutex);
     return counts;
 }

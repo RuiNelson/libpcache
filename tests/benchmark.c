@@ -2,13 +2,12 @@
 
 #include "common.h"
 #include "libpcache.h"
+#include "platform.h"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-#include <unistd.h>
 
 #define PAGES_PER_BATCH 1000
 
@@ -58,10 +57,13 @@ int main(void) {
 
         /* Build unique paths for this config. */
         char db_path[256], dat_path[256];
-        snprintf(db_path, sizeof(db_path), "/tmp/pcache_bench_%zu.db", cfg);
-        snprintf(dat_path, sizeof(dat_path), "/tmp/pcache_bench_%zu.dat", cfg);
-        unlink(db_path);
-        unlink(dat_path);
+        char db_name[64], dat_name[64];
+        snprintf(db_name, sizeof(db_name), "pcache_bench_%zu.db", cfg);
+        snprintf(dat_name, sizeof(dat_name), "pcache_bench_%zu.dat", cfg);
+        test_temp_path(db_path, sizeof(db_path), db_name);
+        test_temp_path(dat_path, sizeof(dat_path), dat_name);
+        platform_unlink(db_path);
+        platform_unlink(dat_path);
 
         pcache_file_pair paths = {db_path, dat_path};
 
@@ -90,8 +92,7 @@ int main(void) {
             continue;
         }
 
-        struct timespec start, end;
-        clock_gettime(CLOCK_MONOTONIC, &start);
+        double start = test_monotonic_seconds();
 
         uint32_t pages_written = 0;
         while (pages_written < c->max_pages) {
@@ -124,12 +125,12 @@ int main(void) {
             pages_written += this_batch;
         }
 
-        clock_gettime(CLOCK_MONOTONIC, &end);
+        double end = test_monotonic_seconds();
         pcache_close(handle, NULL, NULL, NULL);
 
-        double elapsed  = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-        off_t  db_size  = file_size(db_path);
-        off_t  dat_size = file_size(dat_path);
+        double  elapsed  = end - start;
+        int64_t db_size  = file_size(db_path);
+        int64_t dat_size = file_size(dat_path);
 
         double db_mb         = db_size / (1024.0 * 1024.0);
         double dat_gb        = dat_size / (1024.0 * 1024.0 * 1024.0);
@@ -140,15 +141,15 @@ int main(void) {
             "| %s | %u KB | %u B | %u | %.2f MB |\n", c->label, c->page_size / 1024, c->id_size, pages_written, db_mb);
 
         /* Clean up temp files. */
-        unlink(db_path);
-        unlink(dat_path);
+        platform_unlink(db_path);
+        platform_unlink(dat_path);
         /* SQLite shared-memory and WAL auxiliary files. */
         {
             char shm_path[256], wal_path[256];
             snprintf(shm_path, sizeof(shm_path), "%s-shm", db_path);
             snprintf(wal_path, sizeof(wal_path), "%s-wal", db_path);
-            unlink(shm_path);
-            unlink(wal_path);
+            platform_unlink(shm_path);
+            platform_unlink(wal_path);
         }
 
     next_config:

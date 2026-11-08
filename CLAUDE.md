@@ -42,6 +42,7 @@ src/              # implementation (not installed)
   volume.c        # volume lifecycle (create, open, close)
   pages.c         # page read/write/delete operations
   maintenance.c   # defragment, set_max_pages, preallocate
+  platform.c / .h # portability layer (POSIX vs Win32 file I/O, mutexes)
   internal.h      # shared internal types and macros
 tests/
   test_pcache.c   # unit tests (tst framework)

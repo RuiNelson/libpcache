@@ -1,8 +1,6 @@
 #include "db.h"
 #include "macros.h"
 
-#include <errno.h>
-#include <unistd.h>
 #include <xxhash.h>
 
 #ifdef PCACHE_TESTING
@@ -13,8 +11,8 @@ void pcache_test_fail_sync(bool fail) {
 }
 #endif
 
-off_t rowid_to_offset(int64_t rowid, size_t page_size) {
-    return (off_t)(rowid - 1) * page_size;
+platform_off_t rowid_to_offset(int64_t rowid, size_t page_size) {
+    return (platform_off_t)(rowid - 1) * page_size;
 }
 
 int db_exec(sqlite3 *db, const char *sql) {
@@ -138,12 +136,12 @@ int64_t find_rowid(pcache_volume *volume, const void *id, int *sqlite_error) {
 void wait_for_synchronization(pcache_volume *volume, int *posix_error, int *sqlite_error) {
 #ifdef PCACHE_TESTING
     if (s_test_sync_failure) {
-        SET_ERR(posix_error, EIO);
+        SET_ERR(posix_error, PLATFORM_ERROR_IO);
         return;
     }
 #endif
-    if (fsync(volume->fd) != 0) {
-        SET_ERR(posix_error, errno);
+    if (platform_fsync(volume->fd) != 0) {
+        SET_ERR(posix_error, platform_last_error());
         return;
     }
     int sqlite_rc = sqlite3_wal_checkpoint_v2(volume->db, NULL, SQLITE_CHECKPOINT_RESTART, NULL, NULL);

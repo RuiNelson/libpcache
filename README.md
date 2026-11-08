@@ -196,9 +196,9 @@ The HTML output is written to `docs/html/`. Open `docs/html/index.html` in a bro
 
 ## Requirements
 
-- C17 compiler (clang or gcc)
-- CMake 3.14 or later
-- libsqlite3 (system package, dynamically linked)
+- C17 compiler (clang, gcc, or MSVC on Windows)
+- CMake 4.0 or later
+- libsqlite3 (system package, dynamically linked; on Windows install it with vcpkg, e.g. `vcpkg install sqlite3:x64-windows`, and configure with `-DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake`)
 
 ## Platform Compatibility
 
@@ -206,7 +206,7 @@ The HTML output is written to `docs/html/`. Open `docs/html/index.html` in a bro
 | -------- | ----------- |
 | macOS    | Supported   |
 | Linux    | Supported   |
-| Windows  | Coming soon |
+| Windows  | Supported   |
 
 ## Copyright and Licensing
 
